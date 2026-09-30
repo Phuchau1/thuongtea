@@ -136,7 +136,7 @@ export const FruitTeaHero: React.FC<FruitTeaHeroProps> = ({
         <span className="hidden md:inline opacity-40">•</span>
         <span className="hidden md:flex items-center gap-1.5 whitespace-nowrap">
           <Phone className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
-          <span className="whitespace-nowrap">Hotline đặt giao nhanh: <strong>1900 8866</strong></span>
+          <span className="whitespace-nowrap">Hotline đặt giao nhanh: <strong>0794 999 406</strong></span>
         </span>
       </div>
 

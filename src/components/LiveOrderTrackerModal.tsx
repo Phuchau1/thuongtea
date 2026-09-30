@@ -133,10 +133,10 @@ export const LiveOrderTrackerModal: React.FC<LiveOrderTrackerModalProps> = ({
           <div className="flex items-center justify-between p-3.5 rounded-2xl bg-[#F5EFE9] border border-[#C5DDD2] text-xs">
             <div className="flex items-center gap-2 text-[#322821]">
               <Phone className="w-4 h-4 text-[#D95829]" />
-              <span>Cần thay đổi thông tin? Gọi Barista: <strong>1900 8866</strong></span>
+              <span>Cần thay đổi thông tin? Gọi Barista: <strong>0794 999 406</strong></span>
             </div>
             <a
-              href="tel:19008866"
+              href="tel:0794999406"
               className="px-3 py-1 rounded-full bg-[#322821] text-white font-bold text-[11px]"
             >
               Gọi Ngay

@@ -102,7 +102,7 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAdmin }) => {
 
             {/* Box Gọi Điện Hotline Trực Tiếp */}
             <a 
-              href="tel:19008866"
+              href="tel:0794999406"
               className="flex items-center justify-between p-3 rounded-xl bg-[#322821] border border-amber-900/30 hover:bg-[#3d3229] transition-colors group"
             >
               <div className="flex items-center gap-2.5">
@@ -110,7 +110,7 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAdmin }) => {
                   <Phone className="w-4 h-4" />
                 </div>
                 <div>
-                  <div className="font-bold text-white text-base leading-none">1900 8866</div>
+                  <div className="font-bold text-white text-base leading-none">0794 999 406</div>
                   <div className="text-[10px] text-stone-400 mt-1">Tổng đài hỗ trợ (07:00 - 22:30)</div>
                 </div>
               </div>
@@ -121,15 +121,15 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAdmin }) => {
 
             {/* Email & Địa Chỉ */}
             <div className="space-y-2 pt-1 text-xs text-stone-300">
-              <a href="mailto:hotro@thuongtea.vn" className="flex items-center gap-2.5 hover:text-white transition-colors">
+              <a href="mailto:ntphau21@gmail.com" className="flex items-center gap-2.5 hover:text-white transition-colors">
                 <Mail className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                <span>hotro@thuongtea.vn</span>
+                <span>ntphau21@gmail.com</span>
               </a>
 
               <div className="flex items-start gap-2.5 text-stone-400">
                 <MapPin className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
                 <span className="text-[11px] leading-relaxed">
-                  88 Nguyễn Huệ, Phường Bến Nghé, Quận 1, TP. Hồ Chí Minh
+                  256 ấp Long Khánh, Phước Lí, Tây Ninh
                 </span>
               </div>
             </div>
