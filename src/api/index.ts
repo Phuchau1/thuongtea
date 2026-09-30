@@ -12,6 +12,7 @@ import {
 import type { PosOrder } from '../types/pos';
 import type { MemberUser } from '../types/user';
 import type { FruitTeaItem, Topping, DiningTable } from '../types/tea';
+import type { StaffMember, AttendanceRecord } from '../types/staff';
 
 /**
  * Lắng nghe đơn hàng Realtime từ Firestore (thay vì polling lặp lại liên tục)
@@ -258,3 +259,64 @@ export async function apiSaveTables(tables: DiningTable[]): Promise<void> {
     await setDoc(doc(db, 'config', 'tables'), { list: tables });
   } catch (err) {}
 }
+
+/**
+ * Lấy danh sách Nhân viên từ Firestore
+ */
+export async function apiGetStaff(): Promise<StaffMember[]> {
+  try {
+    const snap = await getDoc(doc(db, 'config', 'staff'));
+    if (snap.exists() && Array.isArray(snap.data()?.list)) {
+      return snap.data().list as StaffMember[];
+    }
+  } catch (err) {}
+  try {
+    const saved = localStorage.getItem('AN_TRA_STAFF');
+    return saved ? JSON.parse(saved) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Lưu danh sách Nhân viên lên Firestore
+ */
+export async function apiSaveStaff(staff: StaffMember[]): Promise<void> {
+  try {
+    await setDoc(doc(db, 'config', 'staff'), { list: staff });
+  } catch (err) {}
+}
+
+/**
+ * Lấy danh sách Chấm công từ Firestore
+ */
+export async function apiGetAttendance(): Promise<AttendanceRecord[]> {
+  try {
+    const snap = await getDocs(collection(db, 'attendance'));
+    const records: AttendanceRecord[] = [];
+    snap.forEach((d) => records.push(d.data() as AttendanceRecord));
+    if (records.length > 0) {
+      try {
+        localStorage.setItem('AN_TRA_ATTENDANCE', JSON.stringify(records));
+      } catch {}
+      return records;
+    }
+  } catch (err) {}
+  try {
+    const saved = localStorage.getItem('AN_TRA_ATTENDANCE');
+    return saved ? JSON.parse(saved) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Lưu bản ghi Chấm công lên Firestore
+ */
+export async function apiSaveAttendanceRecord(record: AttendanceRecord): Promise<void> {
+  try {
+    const docId = record.id || `att-${Date.now()}`;
+    await setDoc(doc(db, 'attendance', String(docId)), record);
+  } catch (err) {}
+}
+

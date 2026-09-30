@@ -21,7 +21,11 @@ import {
   apiSaveToppings,
   apiGetTables,
   apiSaveTables,
-  apiListenOrders
+  apiListenOrders,
+  apiGetStaff,
+  apiSaveStaff,
+  apiGetAttendance,
+  apiSaveAttendanceRecord
 } from '../api';
 
 interface OrderContextType {
@@ -385,6 +389,16 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setTables(apiTabs);
       }
     });
+    apiGetStaff().then((apiStaff) => {
+      if (apiStaff && apiStaff.length > 0) {
+        setStaffMembers(apiStaff);
+      }
+    });
+    apiGetAttendance().then((apiAtt) => {
+      if (apiAtt && apiAtt.length > 0) {
+        setAttendanceRecords(apiAtt);
+      }
+    });
   }, []);
 
   // Đồng bộ Realtime từ Firebase Firestore (WebSocket realtime không chiếm băng thông)
@@ -467,6 +481,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     try {
       localStorage.setItem('AN_TRA_STAFF', JSON.stringify(staffMembers));
+      apiSaveStaff(staffMembers);
     } catch (e) {
       console.warn('Could not save staff', e);
     }
@@ -839,6 +854,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
 
     setAttendanceRecords((prev) => [newRecord, ...prev]);
+    apiSaveAttendanceRecord(newRecord);
     return {
       success: true,
       message: `Chấm công vào ca thành công! Chào ${staff.name} (${staff.roleTitle}).`,
@@ -880,6 +896,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     updatedRecords[activeIndex] = completedRecord;
     setAttendanceRecords(updatedRecords);
+    apiSaveAttendanceRecord(completedRecord);
 
     return {
       success: true,

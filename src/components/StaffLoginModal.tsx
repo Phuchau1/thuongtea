@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Lock, KeyRound, ShieldAlert, Clock, CheckCircle2, UserCheck, ShieldCheck } from 'lucide-react';
+import { X, Lock, KeyRound, ShieldAlert, Clock, CheckCircle2, UserCheck } from 'lucide-react';
 import { useOrders } from '../context/OrderContext';
 import { playClickSound, playSuccessSound } from '../utils/audio';
 
@@ -14,7 +14,7 @@ export const StaffLoginModal: React.FC<StaffLoginModalProps> = ({
   onClose,
   onLoginSuccess,
 }) => {
-  const { staffMembers, loginStaff, clockIn, clockOut } = useOrders();
+  const { loginStaff, clockIn, clockOut } = useOrders();
   const [pin, setPin] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -95,16 +95,6 @@ export const StaffLoginModal: React.FC<StaffLoginModalProps> = ({
     } else {
       setErrorMsg(res.message);
       setSuccessMsg(null);
-    }
-  };
-
-  const handleSelectQuickStaff = (code: string) => {
-    setPin(code);
-    setErrorMsg(null);
-    setSuccessMsg(null);
-    playClickSound(true);
-    if (modalTab === 'login') {
-      verifyAndLogin(code);
     }
   };
 
@@ -265,45 +255,15 @@ export const StaffLoginModal: React.FC<StaffLoginModalProps> = ({
           </div>
         )}
 
-        {/* Danh sách tài khoản mẫu để test nhanh các vai trò */}
-        <div className="pt-3 border-t border-[#F0EAE0] text-left">
-          <div className="text-[11px] font-bold text-[#627068] mb-2 flex items-center justify-between">
-            <span className="flex items-center gap-1">
-              <ShieldCheck className="w-3 h-3 text-[#322821]" />
-              <span>Tài Khoản Nhân Viên & Mã Code:</span>
-            </span>
-            <span className="text-[10px] text-[#9AA59F]">Bấm để chọn nhanh</span>
+        {/* Khung ghi chú bảo mật hệ thống nội bộ */}
+        <div className="pt-4 border-t border-[#F0EAE0] text-center text-xs text-[#7A8780] space-y-1">
+          <div className="flex items-center justify-center gap-1.5 text-[#322821] font-bold">
+            <Lock className="w-3.5 h-3.5 text-[#D95829]" />
+            <span>Khu Vực Quản Trị Bảo Mật</span>
           </div>
-
-          <div className="grid grid-cols-2 gap-1.5">
-            {staffMembers.map((staff) => (
-              <button
-                key={staff.id}
-                type="button"
-                onClick={() => handleSelectQuickStaff(staff.code)}
-                className={`p-2 rounded-xl text-left border transition-all ${
-                  pin === staff.code
-                    ? 'border-[#322821] bg-[#F5EFE9]'
-                    : 'border-[#EAE3D2] bg-[#FAF7F2] hover:bg-[#F3EDE2]'
-                }`}
-              >
-                <div className="flex items-center gap-1.5">
-                  <span className="text-base">{staff.avatar}</span>
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold text-[#322821] truncate">
-                      {staff.name}
-                    </div>
-                    <div className="text-[10px] text-[#69776E] flex items-center gap-1">
-                      <span className="font-mono font-bold text-[#D95829]">[{staff.code}]</span>
-                      <span className="truncate">
-                        {staff.role === 'admin' ? 'Quản Lý' : staff.role === 'cashier' ? 'Thu Ngân' : 'Pha Chế'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
+          <p className="text-[11px] text-[#69776E] max-w-xs mx-auto leading-relaxed">
+            Vui lòng nhập mã PIN bảo mật cá nhân (4 - 6 số) do Quản Lý Thượng Tea cấp để truy cập hệ thống.
+          </p>
         </div>
       </div>
     </div>

@@ -16,6 +16,103 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
+const INITIAL_STAFF = [
+  {
+    id: 'NV-ADMIN-01',
+    code: '1234',
+    name: 'Nguyễn Hoàng An',
+    role: 'admin',
+    roleTitle: 'Chủ Quán / Quản Lý Cấp Cao',
+    phone: '0908886688',
+    avatar: '👨‍💼',
+    hourlyWage: 55000,
+    isActive: true,
+    createdAt: '01/01/2026',
+  },
+  {
+    id: 'NV-CASHIER-01',
+    code: '1001',
+    name: 'Trần Thu Trang',
+    role: 'cashier',
+    roleTitle: 'Thu Ngân Đứng Quầy (Ca Sáng)',
+    phone: '0938112233',
+    avatar: '👩‍💼',
+    hourlyWage: 28000,
+    isActive: true,
+    createdAt: '15/02/2026',
+  },
+  {
+    id: 'NV-CASHIER-02',
+    code: '1002',
+    name: 'Lê Tuấn Kiệt',
+    role: 'cashier',
+    roleTitle: 'Thu Ngân Đứng Quầy (Ca Chiều)',
+    phone: '0977223344',
+    avatar: '🧑‍💼',
+    hourlyWage: 28000,
+    isActive: true,
+    createdAt: '01/03/2026',
+  },
+  {
+    id: 'NV-BARISTA-01',
+    code: '2001',
+    name: 'Phạm Gia Huy',
+    role: 'barista',
+    roleTitle: 'Trưởng Ca Pha Chế',
+    phone: '0912445566',
+    avatar: '👨‍🍳',
+    hourlyWage: 32000,
+    isActive: true,
+    createdAt: '10/01/2026',
+  },
+];
+
+const INITIAL_ATTENDANCE = [
+  {
+    id: 'ATT-20260925-01',
+    staffId: 'NV-CASHIER-01',
+    staffCode: '1001',
+    staffName: 'Trần Thu Trang',
+    staffRole: 'cashier',
+    roleTitle: 'Thu Ngân Đứng Quầy (Ca Sáng)',
+    date: '25/09/2026',
+    checkInTime: '07:30:12',
+    checkOutTime: '15:35:45',
+    status: 'completed',
+    totalMinutes: 485,
+    ordersHandled: 24,
+    note: 'Hoàn thành ca sáng tốt, đối soát tiền mặt khớp 100%',
+  },
+  {
+    id: 'ATT-20260925-02',
+    staffId: 'NV-BARISTA-01',
+    staffCode: '2001',
+    staffName: 'Phạm Gia Huy',
+    staffRole: 'barista',
+    roleTitle: 'Trưởng Ca Pha Chế',
+    date: '25/09/2026',
+    checkInTime: '08:00:00',
+    checkOutTime: '16:00:20',
+    status: 'completed',
+    totalMinutes: 480,
+    ordersHandled: 36,
+    note: 'Đã chuẩn bị đầy đủ syrup và thạch cho ca chiều',
+  },
+  {
+    id: 'ATT-20260925-03',
+    staffId: 'NV-CASHIER-02',
+    staffCode: '1002',
+    staffName: 'Lê Tuấn Kiệt',
+    staffRole: 'cashier',
+    roleTitle: 'Thu Ngân Đứng Quầy (Ca Chiều)',
+    date: '25/09/2026',
+    checkInTime: '15:30:05',
+    status: 'in-shift',
+    ordersHandled: 8,
+    note: 'Đang trực quầy ca tối',
+  },
+];
+
 async function seed() {
   console.log('🚀 Đang đọc file data/db.json...');
   const dbRaw = fs.readFileSync(path.resolve(__dirname, '../data/db.json'), 'utf-8');
@@ -59,6 +156,18 @@ async function seed() {
     }
     console.log(`✅ Đã tải ${dbData.orders.length} đơn hàng.`);
   }
+
+  console.log('📦 6. Đang tải danh sách Nhân viên (staff) lên Firestore...');
+  await setDoc(doc(db, 'config', 'staff'), { list: INITIAL_STAFF });
+  console.log(`✅ Đã lưu ${INITIAL_STAFF.length} tài khoản nhân viên vào cơ sở dữ liệu.`);
+
+  console.log('📦 7. Đang tải lịch sử Chấm công (attendance) lên Firestore...');
+  for (const record of INITIAL_ATTENDANCE) {
+    if (record.id) {
+      await setDoc(doc(db, 'attendance', String(record.id)), record);
+    }
+  }
+  console.log(`✅ Đã lưu ${INITIAL_ATTENDANCE.length} bản ghi chấm công vào cơ sở dữ liệu.`);
 
   console.log('\n🎉 Hoàn thành chuyển toàn bộ dữ liệu lên Firebase Firestore thành công!');
   process.exit(0);

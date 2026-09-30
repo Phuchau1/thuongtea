@@ -3177,32 +3177,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               </button>
             </div>
 
-            {/* Danh sách gợi ý mã nhân viên */}
-            <div className="pt-4 border-t border-[#F0EAE0] text-left">
-              <div className="text-[11px] font-bold text-[#627068] mb-2">
-                Chọn Nhanh Tài Khoản Nhân Viên:
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                {staffMembers.map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={() => {
-                      setClockInPin(s.code);
-                      setAttendanceMessage(null);
-                      playClickSound(true);
-                    }}
-                    className={`p-2 rounded-xl text-left border transition-all ${
-                      clockInPin === s.code ? 'border-[#322821] bg-[#F5EFE9]' : 'border-[#EAE3D2] bg-[#FAF7F2]'
-                    }`}
-                  >
-                    <div className="font-bold text-xs text-[#322821]">{s.name}</div>
-                    <div className="text-[10px] text-[#7A8780] flex justify-between">
-                      <span>{s.roleTitle}</span>
-                      <strong className="font-mono text-[#D95829]">[{s.code}]</strong>
-                    </div>
-                  </button>
-                ))}
-              </div>
+            {/* Hướng dẫn bảo mật chấm công */}
+            <div className="pt-4 border-t border-[#F0EAE0] text-center text-xs text-[#7A8780] space-y-1">
+              <p className="text-[11px] text-[#69776E] max-w-xs mx-auto leading-relaxed">
+                🔒 Nhân viên nhập đúng mã PIN cá nhân do Quản Lý cấp trên bàn phím số để Vào Ca (IN) hoặc Ra Ca (OUT).
+              </p>
             </div>
           </div>
         )}
