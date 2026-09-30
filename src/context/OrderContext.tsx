@@ -399,6 +399,11 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
       if (staffRes.status === 'fulfilled' && staffRes.value && staffRes.value.length > 0) {
         setStaffMembers(staffRes.value);
+        setCurrentStaff((curr) => {
+          if (!curr) return staffRes.value[0];
+          const matched = staffRes.value.find((s) => s.id === curr.id || s.code === curr.code);
+          return matched ? { ...curr, ...matched } : staffRes.value[0];
+        });
       }
       if (attRes.status === 'fulfilled' && attRes.value && attRes.value.length > 0) {
         setAttendanceRecords(attRes.value);
@@ -549,6 +554,18 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         try { setToppings(JSON.parse(e.newValue)); } catch {}
       } else if (e.key === 'AN_TRA_TABLES' && e.newValue) {
         try { setTables(JSON.parse(e.newValue)); } catch {}
+      } else if (e.key === 'AN_TRA_STAFF' && e.newValue) {
+        try {
+          const list = JSON.parse(e.newValue);
+          setStaffMembers(list);
+          setCurrentStaff((curr) => {
+            if (!curr) return null;
+            const matched = list.find((s: StaffMember) => s.id === curr.id || s.code === curr.code);
+            return matched ? { ...curr, ...matched } : curr;
+          });
+        } catch {}
+      } else if (e.key === 'AN_TRA_CURRENT_STAFF' && e.newValue) {
+        try { setCurrentStaff(JSON.parse(e.newValue)); } catch {}
       }
     };
     window.addEventListener('storage', handleStorage);
@@ -590,7 +607,21 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         } else if (type === 'UPDATE_TABLES') {
           setTables(payload);
         } else if (type === 'UPDATE_STAFF') {
-          setStaffMembers(payload);
+          const list = payload as StaffMember[];
+          setStaffMembers(list);
+          try {
+            localStorage.setItem('AN_TRA_STAFF', JSON.stringify(list));
+          } catch {}
+          setCurrentStaff((curr) => {
+            if (!curr) return null;
+            const matched = list.find((s) => s.id === curr.id || s.code === curr.code);
+            return matched ? { ...curr, ...matched } : curr;
+          });
+        } else if (type === 'UPDATE_CURRENT_STAFF') {
+          setCurrentStaff(payload as StaffMember);
+          try {
+            localStorage.setItem('AN_TRA_CURRENT_STAFF', JSON.stringify(payload));
+          } catch {}
         } else if (type === 'UPDATE_MEMBERS') {
           setMembers(payload);
         } else if (type === 'UPDATE_CURRENT_USER') {
@@ -856,6 +887,9 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const addStaffMember = (newStaff: StaffMember) => {
     setStaffMembers((prev) => {
       const updated = [newStaff, ...prev];
+      try {
+        localStorage.setItem('AN_TRA_STAFF', JSON.stringify(updated));
+      } catch {}
       broadcast('UPDATE_STAFF', updated);
       apiSaveStaff(updated);
       return updated;
@@ -865,18 +899,45 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const updateStaffMember = (id: string, updated: Partial<StaffMember>) => {
     setStaffMembers((prev) => {
       const updatedList = prev.map((s) => (s.id === id ? { ...s, ...updated } : s));
+      try {
+        localStorage.setItem('AN_TRA_STAFF', JSON.stringify(updatedList));
+      } catch {}
       broadcast('UPDATE_STAFF', updatedList);
       apiSaveStaff(updatedList);
       return updatedList;
     });
-    if (currentStaff && currentStaff.id === id) {
-      setCurrentStaff((prev) => (prev ? { ...prev, ...updated } : null));
+
+    // Cập nhật currentStaff nếu nhân viên đang trực là tài khoản này
+    setCurrentStaff((prev) => {
+      if (prev && (prev.id === id || prev.code === updated.code)) {
+        const nextStaff = { ...prev, ...updated };
+        try {
+          localStorage.setItem('AN_TRA_CURRENT_STAFF', JSON.stringify(nextStaff));
+        } catch {}
+        broadcast('UPDATE_CURRENT_STAFF', nextStaff);
+        return nextStaff;
+      }
+      return prev;
+    });
+
+    // Cập nhật tên hiển thị trong lịch sử chấm công
+    if (updated.name) {
+      setAttendanceRecords((prev) => {
+        const nextAtt = prev.map((r) => (r.staffId === id ? { ...r, staffName: updated.name! } : r));
+        try {
+          localStorage.setItem('AN_TRA_ATTENDANCE', JSON.stringify(nextAtt));
+        } catch {}
+        return nextAtt;
+      });
     }
   };
 
   const deleteStaffMember = (id: string) => {
     setStaffMembers((prev) => {
       const updatedList = prev.filter((s) => s.id !== id);
+      try {
+        localStorage.setItem('AN_TRA_STAFF', JSON.stringify(updatedList));
+      } catch {}
       broadcast('UPDATE_STAFF', updatedList);
       apiSaveStaff(updatedList);
       return updatedList;

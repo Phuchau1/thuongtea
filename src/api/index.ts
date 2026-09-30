@@ -278,9 +278,17 @@ export async function apiGetStaff(): Promise<StaffMember[]> {
   try {
     const snap = await getDoc(doc(db, 'config', 'staff'));
     if (snap.exists() && Array.isArray(snap.data()?.list)) {
-      return snap.data().list as StaffMember[];
+      const list = snap.data().list as StaffMember[];
+      if (list.length > 0) {
+        try {
+          localStorage.setItem('AN_TRA_STAFF', JSON.stringify(list));
+        } catch {}
+        return list;
+      }
     }
-  } catch (err) {}
+  } catch (err) {
+    console.debug('Firebase get staff fallback', err);
+  }
   try {
     const saved = localStorage.getItem('AN_TRA_STAFF');
     return saved ? JSON.parse(saved) : [];
@@ -294,8 +302,13 @@ export async function apiGetStaff(): Promise<StaffMember[]> {
  */
 export async function apiSaveStaff(staff: StaffMember[]): Promise<void> {
   try {
+    localStorage.setItem('AN_TRA_STAFF', JSON.stringify(staff));
+  } catch {}
+  try {
     await setDoc(doc(db, 'config', 'staff'), { list: staff });
-  } catch (err) {}
+  } catch (err) {
+    console.error('Lỗi khi lưu danh sách nhân viên lên Firestore:', err);
+  }
 }
 
 /**

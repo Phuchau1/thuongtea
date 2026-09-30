@@ -20,10 +20,10 @@ const INITIAL_STAFF = [
   {
     id: 'NV-ADMIN-01',
     code: '1234',
-    name: 'Nguyễn Hoàng An',
+    name: 'Ngô Thành Phúc Hậu',
     role: 'admin',
     roleTitle: 'Chủ Quán / Quản Lý Cấp Cao',
-    phone: '0908886688',
+    phone: '0794999406',
     avatar: '👨‍💼',
     hourlyWage: 55000,
     isActive: true,
