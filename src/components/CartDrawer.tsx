@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, Trash2, Plus, Minus, ShoppingBag, ArrowRight, CheckCircle2, 
   QrCode, Banknote, Tag, Eye, UtensilsCrossed, Bike, Award, Clock,
@@ -85,6 +85,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
 
   const [formErrors, setFormErrors] = useState<FormErrors>({});
   const [createdOrderCode, setCreatedOrderCode] = useState<string>('');
+  const prevIsOpenRef = useRef(false);
 
   const allTables: string[] = allTablesList && allTablesList.length > 0
     ? allTablesList
@@ -101,12 +102,11 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   };
 
   useEffect(() => {
-    if (isOpen) {
+    // Chỉ kích hoạt khởi tạo lại khi Drawer chuyển từ ĐÓNG sang MỞ
+    if (isOpen && !prevIsOpenRef.current) {
       setServingType(initialServingType);
       setTableNumber(initialTableNumber);
-      if (initialStep) {
-        setStep(initialStep);
-      }
+      setStep(initialStep || 'cart');
       setFormErrors({});
 
       // Khôi phục thông tin khách hàng đã lưu từ localStorage
@@ -131,7 +131,13 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
         }));
       }
     }
-  }, [isOpen, initialServingType, initialTableNumber, initialStep, currentUser]);
+
+    if (!isOpen) {
+      setStep(initialStep || 'cart');
+    }
+
+    prevIsOpenRef.current = isOpen;
+  }, [isOpen, initialServingType, initialTableNumber, initialStep]);
 
   if (!isOpen) return null;
 
@@ -277,15 +283,15 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
         : 'Đã thanh toán VietQR',
     };
 
+    // Chuyển sang Bước 3: Đặt thành công & Hướng dẫn thanh toán ngay lập tức
+    setStep('success');
+
     // Đẩy đơn vào hệ thống quản lý đơn POS
     addOrder(newPosOrder);
 
-    // XÓA SẠCH GIỎ HÀNG SAU KHI ĐẶT THÀNH CÔNG (Yêu cầu của người dùng)
+    // XÓA SẠCH GIỎ HÀNG SAU KHI ĐẶT THÀNH CÔNG (Món đã gửi quầy thành công)
     onClearCart();
     playSuccessSound(true);
-
-    // Chuyển sang Bước 3: Đặt thành công & Hướng dẫn thanh toán
-    setStep('success');
   };
 
   const handleOrderMore = () => {
