@@ -310,24 +310,44 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return tables.filter((t) => t.isActive !== false).map((t) => t.name);
   }, [tables]);
 
-  // 2. Danh sách Thành viên & Điểm tích lũy
+  // 2. Danh sách Thành viên & Điểm tích lũy (Chuẩn hóa duy nhất 1 số điện thoại = 1 tài khoản)
   const [members, setMembers] = useState<MemberUser[]>(() => {
     try {
       const saved = localStorage.getItem('AN_TRA_MEMBERS');
+      const memMap = new Map<string, MemberUser>();
       if (saved) {
         const parsed: MemberUser[] = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          const existingPhones = new Set(parsed.map(m => m.phone.replace(/\s+/g, '')));
-          const missing = INITIAL_MEMBERS.filter(m => !existingPhones.has(m.phone.replace(/\s+/g, '')));
-          if (missing.length > 0) {
-            const combined = [...parsed, ...missing];
-            localStorage.setItem('AN_TRA_MEMBERS', JSON.stringify(combined));
-            return combined;
-          }
-          return parsed;
+          parsed.forEach((m) => {
+            const p = (m.phone || '').replace(/\D/g, '');
+            if (p) {
+              if (!memMap.has(p)) {
+                memMap.set(p, { ...m, id: p, phone: p });
+              } else {
+                const ex = memMap.get(p)!;
+                const higher = (m.totalSpent || 0) >= (ex.totalSpent || 0) ? m : ex;
+                memMap.set(p, {
+                  ...higher,
+                  id: p,
+                  phone: p,
+                  points: Math.max(m.points || 0, ex.points || 0),
+                  totalSpent: Math.max(m.totalSpent || 0, ex.totalSpent || 0),
+                });
+              }
+            }
+          });
         }
       }
-      return INITIAL_MEMBERS;
+      // Bổ sung các thành viên mẫu nếu chưa có
+      INITIAL_MEMBERS.forEach((im) => {
+        const p = im.phone.replace(/\D/g, '');
+        if (p && !memMap.has(p)) {
+          memMap.set(p, { ...im, id: p, phone: p });
+        }
+      });
+      const res = Array.from(memMap.values());
+      try { localStorage.setItem('AN_TRA_MEMBERS', JSON.stringify(res)); } catch {}
+      return res;
     } catch {
       return INITIAL_MEMBERS;
     }
@@ -412,7 +432,28 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setOrders(ordersRes.value);
       }
       if (membersRes.status === 'fulfilled' && membersRes.value && membersRes.value.length > 0) {
-        setMembers(membersRes.value);
+        const memMap = new Map<string, MemberUser>();
+        membersRes.value.forEach((m) => {
+          const p = (m.phone || '').replace(/\D/g, '');
+          if (p) {
+            if (!memMap.has(p)) {
+              memMap.set(p, { ...m, id: p, phone: p });
+            } else {
+              const ex = memMap.get(p)!;
+              const higher = (m.totalSpent || 0) >= (ex.totalSpent || 0) ? m : ex;
+              memMap.set(p, {
+                ...higher,
+                id: p,
+                phone: p,
+                points: Math.max(m.points || 0, ex.points || 0),
+                totalSpent: Math.max(m.totalSpent || 0, ex.totalSpent || 0),
+              });
+            }
+          }
+        });
+        const cleanMembers = Array.from(memMap.values());
+        setMembers(cleanMembers);
+        try { localStorage.setItem('AN_TRA_MEMBERS', JSON.stringify(cleanMembers)); } catch {}
       }
       if (prodsRes.status === 'fulfilled' && prodsRes.value && prodsRes.value.length > 0) {
         setProducts(prodsRes.value);
@@ -790,14 +831,14 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // THÀNH VIÊN & TÍCH ĐIỂM
   // ==========================================
   const loginMember = (phone: string, name?: string): MemberUser => {
-    const cleanPhone = phone.replace(/\s+/g, '');
-    const existingIdx = members.findIndex((m) => m.phone.replace(/\s+/g, '') === cleanPhone);
+    const cleanPhone = phone.replace(/\D/g, '');
+    const existingIdx = members.findIndex((m) => (m.phone || '').replace(/\D/g, '') === cleanPhone);
 
     if (existingIdx >= 0) {
       let existing = members[existingIdx];
       // Nếu khách có tên mới hoặc cụ thể hơn, cập nhật lại tên thành viên
       if (name && name.trim() && (existing.name.startsWith('Khách hàng ') || existing.name !== name.trim())) {
-        existing = { ...existing, name: name.trim() };
+        existing = { ...existing, name: name.trim(), id: cleanPhone, phone: cleanPhone };
         const updated = members.map((m, idx) => idx === existingIdx ? existing : m);
         setMembers(updated);
         try { localStorage.setItem('AN_TRA_MEMBERS', JSON.stringify(updated)); } catch {}
@@ -812,7 +853,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     // Nếu chưa có, tạo tài khoản mới tặng 20 điểm chào mừng
     const newMember: MemberUser = {
-      id: 'user-' + Date.now(),
+      id: cleanPhone,
       name: name?.trim() || `Khách hàng ${cleanPhone.slice(-4)}`,
       phone: cleanPhone,
       points: 20, // Tặng 20 điểm tân thủ
@@ -821,7 +862,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       registeredAt: new Date().toLocaleDateString('vi-VN'),
     };
 
-    const updated = [newMember, ...members];
+    const updated = [newMember, ...members.filter((m) => (m.phone || '').replace(/\D/g, '') !== cleanPhone)];
     setMembers(updated);
     setCurrentUser(newMember);
     try {
@@ -842,11 +883,11 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Cộng điểm khi đặt đơn thành công (10.000đ = 1 điểm)
   const addPointsToMember = (phone: string, points: number, spentAmount: number) => {
-    const cleanPhone = phone.replace(/\s+/g, '');
+    const cleanPhone = phone.replace(/\D/g, '');
     setMembers((prev) => {
       let targetToSave: MemberUser | null = null;
       const updated = prev.map((m) => {
-        if (m.phone.replace(/\s+/g, '') === cleanPhone) {
+        if ((m.phone || '').replace(/\D/g, '') === cleanPhone) {
           const newPoints = m.points + points;
           const newSpent = m.totalSpent + spentAmount;
           let tier = m.tier;
@@ -854,9 +895,9 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           else if (newSpent >= 2000000) tier = 'Hạng Vàng';
           else if (newSpent >= 1000000) tier = 'Hạng Bạc';
 
-          const updatedMember = { ...m, points: newPoints, totalSpent: newSpent, tier };
+          const updatedMember = { ...m, id: cleanPhone, phone: cleanPhone, points: newPoints, totalSpent: newSpent, tier };
           targetToSave = updatedMember;
-          if (currentUser && currentUser.phone.replace(/\s+/g, '') === cleanPhone) {
+          if (currentUser && (currentUser.phone || '').replace(/\D/g, '') === cleanPhone) {
             setCurrentUser(updatedMember);
           }
           return updatedMember;
@@ -873,17 +914,17 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deductPointsFromMember = (phone: string, points: number): boolean => {
-    const cleanPhone = phone.replace(/\s+/g, '');
-    const member = members.find((m) => m.phone.replace(/\s+/g, '') === cleanPhone);
+    const cleanPhone = phone.replace(/\D/g, '');
+    const member = members.find((m) => (m.phone || '').replace(/\D/g, '') === cleanPhone);
     if (!member || member.points < points) return false;
 
     setMembers((prev) => {
       let targetToSave: MemberUser | null = null;
       const updated = prev.map((m) => {
-        if (m.phone.replace(/\s+/g, '') === cleanPhone) {
-          const updatedMember = { ...m, points: m.points - points };
+        if ((m.phone || '').replace(/\D/g, '') === cleanPhone) {
+          const updatedMember = { ...m, id: cleanPhone, phone: cleanPhone, points: m.points - points };
           targetToSave = updatedMember;
-          if (currentUser && currentUser.phone.replace(/\s+/g, '') === cleanPhone) {
+          if (currentUser && (currentUser.phone || '').replace(/\D/g, '') === cleanPhone) {
             setCurrentUser(updatedMember);
           }
           return updatedMember;
@@ -901,15 +942,15 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const addMember = (newMember: MemberUser) => {
-    const cleanPhone = newMember.phone.replace(/\s+/g, '');
+    const cleanPhone = (newMember.phone || '').replace(/\D/g, '');
     const formatted: MemberUser = {
       ...newMember,
-      id: newMember.id || `user-${Date.now()}`,
+      id: cleanPhone,
       phone: cleanPhone,
       registeredAt: newMember.registeredAt || new Date().toLocaleDateString('vi-VN'),
     };
     setMembers((prev) => {
-      const updated = [formatted, ...prev.filter((m) => m.phone.replace(/\s+/g, '') !== cleanPhone)];
+      const updated = [formatted, ...prev.filter((m) => (m.phone || '').replace(/\D/g, '') !== cleanPhone)];
       try { localStorage.setItem('AN_TRA_MEMBERS', JSON.stringify(updated)); } catch {}
       broadcast('UPDATE_MEMBERS', updated);
       apiSaveMember(formatted);
@@ -918,14 +959,14 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateMember = (phone: string, updated: Partial<MemberUser>) => {
-    const cleanPhone = phone.replace(/\s+/g, '');
+    const cleanPhone = phone.replace(/\D/g, '');
     setMembers((prev) => {
       let target: MemberUser | null = null;
       const updatedList = prev.map((m) => {
-        if (m.phone.replace(/\s+/g, '') === cleanPhone) {
-          const res = { ...m, ...updated };
+        if ((m.phone || '').replace(/\D/g, '') === cleanPhone) {
+          const res = { ...m, ...updated, id: cleanPhone, phone: cleanPhone };
           target = res;
-          if (currentUser && currentUser.phone.replace(/\s+/g, '') === cleanPhone) {
+          if (currentUser && (currentUser.phone || '').replace(/\D/g, '') === cleanPhone) {
             setCurrentUser(res);
           }
           return res;
@@ -942,15 +983,15 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const adjustMemberPoints = (phone: string, pointsDelta: number) => {
-    const cleanPhone = phone.replace(/\s+/g, '');
+    const cleanPhone = phone.replace(/\D/g, '');
     setMembers((prev) => {
       let target: MemberUser | null = null;
       const updatedList = prev.map((m) => {
-        if (m.phone.replace(/\s+/g, '') === cleanPhone) {
+        if ((m.phone || '').replace(/\D/g, '') === cleanPhone) {
           const newPts = Math.max(0, m.points + pointsDelta);
-          const res = { ...m, points: newPts };
+          const res = { ...m, id: cleanPhone, phone: cleanPhone, points: newPts };
           target = res;
-          if (currentUser && currentUser.phone.replace(/\s+/g, '') === cleanPhone) {
+          if (currentUser && (currentUser.phone || '').replace(/\D/g, '') === cleanPhone) {
             setCurrentUser(res);
           }
           return res;
@@ -967,9 +1008,9 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deleteMember = (phone: string) => {
-    const cleanPhone = phone.replace(/\s+/g, '');
+    const cleanPhone = phone.replace(/\D/g, '');
     setMembers((prev) => {
-      const updated = prev.filter((m) => m.phone.replace(/\s+/g, '') !== cleanPhone);
+      const updated = prev.filter((m) => (m.phone || '').replace(/\D/g, '') !== cleanPhone);
       try { localStorage.setItem('AN_TRA_MEMBERS', JSON.stringify(updated)); } catch {}
       broadcast('UPDATE_MEMBERS', updated);
       return updated;

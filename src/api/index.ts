@@ -168,8 +168,35 @@ export async function apiClearTable(tableNumber: string): Promise<void> {
 export async function apiGetMembers(): Promise<MemberUser[]> {
   try {
     const snap = await getDocs(collection(db, 'members'));
-    const members: MemberUser[] = [];
-    snap.forEach((d) => members.push(d.data() as MemberUser));
+    const membersMap = new Map<string, MemberUser>();
+    snap.forEach((d) => {
+      const data = d.data() as MemberUser;
+      const cleanPhone = (data.phone || '').replace(/\D/g, '');
+      if (!cleanPhone) return;
+
+      const normalized: MemberUser = {
+        ...data,
+        id: cleanPhone,
+        phone: cleanPhone,
+      };
+
+      if (!membersMap.has(cleanPhone)) {
+        membersMap.set(cleanPhone, normalized);
+      } else {
+        // Tự động gộp nếu dữ liệu cũ còn sót bản ghi trùng số điện thoại
+        const existing = membersMap.get(cleanPhone)!;
+        const higher = (data.totalSpent || 0) >= (existing.totalSpent || 0) ? data : existing;
+        membersMap.set(cleanPhone, {
+          ...higher,
+          id: cleanPhone,
+          phone: cleanPhone,
+          points: Math.max(data.points || 0, existing.points || 0),
+          totalSpent: Math.max(data.totalSpent || 0, existing.totalSpent || 0),
+        });
+      }
+    });
+
+    const members = Array.from(membersMap.values());
     if (members.length > 0) {
       try {
         localStorage.setItem('AN_TRA_MEMBERS', JSON.stringify(members));
@@ -179,20 +206,36 @@ export async function apiGetMembers(): Promise<MemberUser[]> {
   } catch (err) {}
   try {
     const saved = localStorage.getItem('AN_TRA_MEMBERS');
-    return saved ? JSON.parse(saved) : [];
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) {
+        const localMap = new Map<string, MemberUser>();
+        parsed.forEach((m: MemberUser) => {
+          const p = (m.phone || '').replace(/\D/g, '');
+          if (p && !localMap.has(p)) localMap.set(p, { ...m, id: p, phone: p });
+        });
+        return Array.from(localMap.values());
+      }
+    }
+    return [];
   } catch {
     return [];
   }
 }
 
 /**
- * Lưu / cập nhật thành viên tích điểm lên Firestore
+ * Lưu / cập nhật thành viên tích điểm lên Firestore (Luôn khóa Document ID theo số điện thoại)
  */
 export async function apiSaveMember(member: MemberUser): Promise<void> {
   try {
-    const docId = member.id || member.phone;
-    if (docId) {
-      await setDoc(doc(db, 'members', String(docId)), member);
+    const cleanPhone = (member.phone || '').replace(/\D/g, '');
+    if (cleanPhone) {
+      const standardized: MemberUser = {
+        ...member,
+        id: cleanPhone,
+        phone: cleanPhone,
+      };
+      await setDoc(doc(db, 'members', cleanPhone), standardized);
     }
   } catch (err) {}
 }
@@ -376,9 +419,15 @@ export async function apiSaveStock(stock: Record<string, boolean>): Promise<void
 /**
  * Xóa thành viên khỏi Firestore
  */
-export async function apiDeleteMember(memberId: string): Promise<void> {
+export async function apiDeleteMember(memberIdOrPhone: string): Promise<void> {
   try {
-    await deleteDoc(doc(db, 'members', String(memberId)));
+    const cleanPhone = String(memberIdOrPhone).replace(/\D/g, '');
+    if (cleanPhone) {
+      await deleteDoc(doc(db, 'members', cleanPhone));
+    }
+    if (memberIdOrPhone && memberIdOrPhone !== cleanPhone) {
+      await deleteDoc(doc(db, 'members', String(memberIdOrPhone)));
+    }
   } catch (err) {}
 }
 

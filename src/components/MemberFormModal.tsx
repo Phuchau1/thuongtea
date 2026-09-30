@@ -8,6 +8,7 @@ interface MemberFormModalProps {
   onClose: () => void;
   onSave: (member: MemberUser) => void;
   initialMember?: MemberUser | null;
+  existingMembers?: MemberUser[];
 }
 
 export const MemberFormModal: React.FC<MemberFormModalProps> = ({
@@ -15,6 +16,7 @@ export const MemberFormModal: React.FC<MemberFormModalProps> = ({
   onClose,
   onSave,
   initialMember,
+  existingMembers = [],
 }) => {
   const isEditing = Boolean(initialMember);
 
@@ -44,11 +46,16 @@ export const MemberFormModal: React.FC<MemberFormModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanPhone = phone.replace(/\s+/g, '');
+    const cleanPhone = phone.replace(/\D/g, '');
     if (!name.trim() || !cleanPhone) return;
 
+    if (!isEditing && existingMembers.some(m => (m.phone || '').replace(/\D/g, '') === cleanPhone)) {
+      alert(`Số điện thoại "${cleanPhone}" đã tồn tại trong danh sách thành viên!`);
+      return;
+    }
+
     const memberData: MemberUser = {
-      id: initialMember?.id || `user-${Date.now()}`,
+      id: cleanPhone,
       name: name.trim(),
       phone: cleanPhone,
       points: Number(points) || 0,

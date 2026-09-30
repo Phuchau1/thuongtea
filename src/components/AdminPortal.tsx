@@ -3985,6 +3985,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           setEditingMember(null);
         }}
         initialMember={editingMember}
+        existingMembers={members}
         onSave={(savedMember) => {
           if (editingMember) {
             updateMember(savedMember.phone, savedMember);
