@@ -19,7 +19,7 @@ interface CartDrawerProps {
   onOpenTracker: () => void;
   initialServingType?: 'dine-in' | 'delivery';
   initialTableNumber?: string;
-  initialStep?: 'cart' | 'checkout';
+  initialStep?: 'cart' | 'checkout' | 'payment';
 }
 
 interface FormErrors {
@@ -50,10 +50,11 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
     deductPointsFromMember, 
     getTableStatus, 
     allTablesList,
-    validateCoupon
+    validateCoupon,
+    coupons
   } = useOrders();
 
-  const [step, setStep] = useState<'cart' | 'checkout' | 'success'>(initialStep);
+  const [step, setStep] = useState<'cart' | 'checkout' | 'payment' | 'success'>(initialStep);
   const [servingType, setServingType] = useState<'dine-in' | 'delivery'>(initialServingType);
   const [tableNumber, setTableNumber] = useState<string>(initialTableNumber);
   const [lastEarnedPoints, setLastEarnedPoints] = useState<number>(0);
@@ -64,7 +65,6 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   const [placedServingType, setPlacedServingType] = useState<'dine-in' | 'delivery'>('dine-in');
   const [placedTableNumber, setPlacedTableNumber] = useState<string>('');
   const [placedAddress, setPlacedAddress] = useState<string>('');
-  const [isTransferConfirmed, setIsTransferConfirmed] = useState<boolean>(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
   const [promoCode, setPromoCode] = useState<string>('');
@@ -162,17 +162,19 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
     (currentUser?.phone.replace(/\s+/g, '') === cleanPhone ? currentUser : null);
   const pointsToEarn = Math.floor(grandTotal / 10000);
 
-  const handleApplyPromo = () => {
-    const code = promoCode.trim().toUpperCase();
+  const handleApplyPromo = (codeToApply?: string) => {
+    const code = (codeToApply || promoCode).trim().toUpperCase();
     if (!code) {
-      setPromoMessage('Vui lòng nhập mã giảm giá.');
+      setPromoMessage('Vui lòng chọn hoặc nhập mã giảm giá.');
       return;
     }
     const result = validateCoupon(code, subtotal);
     if (result.valid && result.coupon) {
+      setPromoCode(result.coupon.code);
       setDiscount(result.discount);
-      setPromoApplied(`${result.coupon.code} (${result.coupon.type === 'percent' ? `Giảm ${result.coupon.value}%` : `Giảm ${formatVND(result.discount)}`})`);
+      setPromoApplied(result.coupon.code);
       setPromoMessage(result.message);
+      playSuccessSound(true);
     } else {
       setDiscount(0);
       setPromoApplied(null);
@@ -180,11 +182,89 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
     }
   };
 
+  const handleRemovePromo = () => {
+    setPromoCode('');
+    setDiscount(0);
+    setPromoApplied(null);
+    setPromoMessage(null);
+    playClickSound(true);
+  };
+
+  // Hoàn tất đơn hàng vào hệ thống POS Barista
+  const handleFinalizeOrder = (method: 'vietqr' | 'cod') => {
+    const finalName = customer.name.trim();
+    const cleanPhone = customer.phone.replace(/\D/g, '');
+
+    const orderId = createdOrderCode || ('TH-' + Math.floor(100000 + Math.random() * 900000));
+    const orderNum = Math.floor(100 + Math.random() * 899);
+
+    // 1. Tự động ghi nhận thành viên theo SĐT và Tên
+    const member = loginMember(cleanPhone, finalName);
+
+    // 2. Tính và cộng điểm tích lũy: 10.000đ = 1 điểm
+    const earnedPoints = Math.floor(grandTotal / 10000);
+    setLastEarnedPoints(earnedPoints);
+    if (earnedPoints > 0) {
+      addPointsToMember(cleanPhone, earnedPoints, grandTotal);
+    }
+
+    // 3. Khấu trừ điểm nếu dùng ưu đãi 50 điểm
+    if (useLoyaltyPoints && member && member.points >= 50) {
+      deductPointsFromMember(cleanPhone, 50);
+    }
+
+    // 4. Cập nhật tổng điểm để hiển thị trên màn hình thành công
+    const newTotalPoints = (member.points || 0) + earnedPoints - (useLoyaltyPoints ? 50 : 0);
+    setCurrentMemberPoints(Math.max(0, newTotalPoints));
+
+    // 5. Tạo đơn hàng chuẩn POS quầy Barista
+    const isPayLater = method === 'cod';
+    const newPosOrder: PosOrder = {
+      id: orderId,
+      orderNumber: orderNum,
+      createdAt: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+      customer: { 
+        ...customer, 
+        name: finalName,
+        phone: cleanPhone,
+        servingType, 
+        tableNumber: servingType === 'dine-in' ? tableNumber : undefined,
+        note: customer.note || (isPayLater 
+          ? (servingType === 'dine-in' 
+              ? `Gọi món tại ${tableNumber} - Thanh toán sau tại quầy` 
+              : 'Giao hàng - Thu tiền mặt khi nhận') 
+          : 'Đã thanh toán chuyển khoản VietQR'),
+      },
+      orderType: servingType,
+      tableNumber: servingType === 'dine-in' ? tableNumber : undefined,
+      items: [...cartItems],
+      subtotal,
+      shippingFee,
+      discount: discount + pointsDiscountAmount,
+      total: grandTotal,
+      status: 'pending',
+      paymentStatus: method === 'vietqr' ? 'paid' : 'unpaid',
+      staffNote: isPayLater 
+        ? (servingType === 'dine-in' ? `Chưa thanh toán (${tableNumber})` : 'Thu tiền mặt khi giao hàng') 
+        : 'Đã thanh toán VietQR',
+    };
+
+    // Đẩy đơn vào hệ thống quản lý đơn POS
+    addOrder(newPosOrder);
+
+    // XÓA SẠCH GIỎ HÀNG SAU KHI ĐẶT THÀNH CÔNG (Món đã gửi quầy thành công)
+    onClearCart();
+    playSuccessSound(true);
+
+    // Chuyển sang Bước 3: Đặt thành công
+    setStep('success');
+  };
+
   const handlePlaceOrder = (e: React.FormEvent) => {
     e.preventDefault();
 
     const finalName = customer.name.trim();
-    const cleanPhone = customer.phone.replace(/\s+/g, '');
+    const cleanPhone = customer.phone.replace(/\D/g, '');
 
     // Kiểm tra tính hợp lệ của biểu mẫu (Inline form validation)
     const errors: FormErrors = {};
@@ -214,17 +294,15 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
     setFormErrors({});
 
     const orderId = 'TH-' + Math.floor(100000 + Math.random() * 900000);
-    const orderNum = Math.floor(100 + Math.random() * 899);
     setCreatedOrderCode(orderId);
 
-    // Lưu snapshot đơn hàng vừa đặt để hiển thị trên màn hình thành công
+    // Lưu snapshot đơn hàng vừa đặt để hiển thị trên màn hình thanh toán / thành công
     setPlacedItems([...cartItems]);
     setPlacedGrandTotal(grandTotal);
     setPlacedPaymentMethod(customer.paymentMethod as 'vietqr' | 'cod');
     setPlacedServingType(servingType);
     setPlacedTableNumber(tableNumber);
     setPlacedAddress(customer.address.trim());
-    setIsTransferConfirmed(false);
 
     // Lưu thông tin khách hàng vào localStorage để lần sau không cần nhập lại
     try {
@@ -236,66 +314,14 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
       }));
     } catch (err) {}
 
-    // 1. Tự động ghi nhận thành viên theo SĐT và Tên
-    const member = loginMember(cleanPhone, finalName);
-
-    // 2. Tính và cộng điểm tích lũy: 10.000đ = 1 điểm
-    const earnedPoints = Math.floor(grandTotal / 10000);
-    setLastEarnedPoints(earnedPoints);
-    if (earnedPoints > 0) {
-      addPointsToMember(cleanPhone, earnedPoints, grandTotal);
+    if (customer.paymentMethod === 'vietqr') {
+      // Nếu chọn Chuyển khoản VietQR: Chuyển sang màn hình Quét mã QR & Thông tin chuyển khoản TRƯỚC
+      playClickSound(true);
+      setStep('payment');
+    } else {
+      // Nếu chọn Tiền mặt / Sau tại quầy: Hoàn tất đơn ngay
+      handleFinalizeOrder('cod');
     }
-
-    // 3. Khấu trừ điểm nếu dùng ưu đãi 50 điểm
-    if (useLoyaltyPoints && member && member.points >= 50) {
-      deductPointsFromMember(cleanPhone, 50);
-    }
-
-    // 4. Cập nhật tổng điểm để hiển thị trên màn hình thành công
-    const newTotalPoints = (member.points || 0) + earnedPoints - (useLoyaltyPoints ? 50 : 0);
-    setCurrentMemberPoints(Math.max(0, newTotalPoints));
-
-    // Tạo đơn hàng chuẩn POS quầy Barista
-    const isPayLater = customer.paymentMethod === 'cod';
-    const newPosOrder: PosOrder = {
-      id: orderId,
-      orderNumber: orderNum,
-      createdAt: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
-      customer: { 
-        ...customer, 
-        name: finalName,
-        phone: cleanPhone,
-        servingType, 
-        tableNumber: servingType === 'dine-in' ? tableNumber : undefined,
-        note: customer.note || (isPayLater 
-          ? (servingType === 'dine-in' 
-              ? `Gọi món tại ${tableNumber} - Thanh toán sau tại quầy` 
-              : 'Giao hàng - Thu tiền mặt khi nhận') 
-          : 'Thanh toán chuyển khoản VietQR'),
-      },
-      orderType: servingType,
-      tableNumber: servingType === 'dine-in' ? tableNumber : undefined,
-      items: [...cartItems],
-      subtotal,
-      shippingFee,
-      discount: discount + pointsDiscountAmount,
-      total: grandTotal,
-      status: 'pending',
-      paymentStatus: customer.paymentMethod === 'vietqr' ? 'paid' : 'unpaid',
-      staffNote: isPayLater 
-        ? (servingType === 'dine-in' ? `Chưa thanh toán (${tableNumber})` : 'Thu tiền mặt khi giao hàng') 
-        : 'Đã thanh toán VietQR',
-    };
-
-    // Chuyển sang Bước 3: Đặt thành công & Hướng dẫn thanh toán ngay lập tức
-    setStep('success');
-
-    // Đẩy đơn vào hệ thống quản lý đơn POS
-    addOrder(newPosOrder);
-
-    // XÓA SẠCH GIỎ HÀNG SAU KHI ĐẶT THÀNH CÔNG (Món đã gửi quầy thành công)
-    onClearCart();
-    playSuccessSound(true);
   };
 
   const handleOrderMore = () => {
@@ -331,6 +357,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                 <h2 className="font-display font-bold text-base sm:text-lg text-[#322821] leading-tight">
                   {step === 'cart' && `Giỏ Hàng (${cartItems.reduce((a, b) => a + b.quantity, 0)} món)`}
                   {step === 'checkout' && (servingType === 'dine-in' ? `Đặt Món (${tableNumber})` : 'Đặt Trà Giao Tận Nơi')}
+                  {step === 'payment' && 'Quét Mã VietQR Chuyển Khoản'}
                   {step === 'success' && 'Đặt Hàng Thành Công'}
                 </h2>
                 {servingType === 'dine-in' && step !== 'success' && (
@@ -353,8 +380,8 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
           <div className="bg-[#FAF7F2] border-b border-[#EAE3D2] px-4 py-2.5 flex items-center justify-between text-[11px] font-bold shrink-0">
             <button
               type="button"
-              onClick={() => step !== 'success' && setStep('cart')}
-              className={`flex items-center gap-1.5 transition-colors cursor-pointer ${
+              onClick={() => (step === 'checkout' || step === 'payment') && setStep('cart')}
+              className={`flex items-center gap-1.5 transition-colors ${
                 step === 'cart' ? 'text-[#322821] font-extrabold' : 'text-[#8C7E74]'
               }`}
             >
@@ -366,16 +393,20 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
               <span>1. Giỏ Hàng</span>
             </button>
             <span className="text-[#C5BAAF]">➔</span>
-            <div className={`flex items-center gap-1.5 ${
-              step === 'checkout' ? 'text-[#322821] font-extrabold' : 'text-[#8C7E74]'
-            }`}>
+            <button
+              type="button"
+              onClick={() => step === 'payment' && setStep('checkout')}
+              className={`flex items-center gap-1.5 ${
+                step === 'checkout' || step === 'payment' ? 'text-[#322821] font-extrabold' : 'text-[#8C7E74]'
+              }`}
+            >
               <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${
-                step === 'checkout' ? 'bg-[#322821] text-white shadow-xs' : 'bg-white border border-[#DDD6C8] text-[#55635B]'
+                step === 'checkout' || step === 'payment' ? 'bg-[#322821] text-white shadow-xs' : 'bg-white border border-[#DDD6C8] text-[#55635B]'
               }`}>
                 2
               </span>
-              <span>2. Thông Tin & Đặt Món</span>
-            </div>
+              <span>{step === 'payment' ? '2. Chuyển Khoản' : '2. Đặt Món'}</span>
+            </button>
             <span className="text-[#C5BAAF]">➔</span>
             <div className={`flex items-center gap-1.5 ${
               step === 'success' ? 'text-emerald-700 font-extrabold' : 'text-[#8C7E74]'
@@ -476,32 +507,92 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                     </div>
                   ))}
 
-                  {/* Mã Giảm Giá */}
-                  <div className="p-3.5 rounded-2xl bg-white border border-[#E8E1D2] space-y-2">
-                    <div className="flex gap-2">
+                  {/* Mã Giảm Giá & Voucher Trong Tài Khoản / Hệ Thống */}
+                  <div className="p-3.5 rounded-2xl bg-white border border-[#E8E1D2] space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-[#322821] flex items-center gap-1.5">
+                        <Tag className="w-3.5 h-3.5 text-[#D95829]" />
+                        <span>Voucher & Khuyến Mãi</span>
+                      </span>
+                      {promoApplied && (
+                        <button
+                          type="button"
+                          onClick={handleRemovePromo}
+                          className="text-[11px] text-red-600 hover:text-red-700 font-bold flex items-center gap-0.5 cursor-pointer"
+                        >
+                          <X className="w-3 h-3" />
+                          <span>Bỏ chọn</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Danh sách voucher có sẵn trong tài khoản / hệ thống */}
+                    {coupons.filter(c => c.isActive).length > 0 && (
+                      <div className="space-y-1.5">
+                        <div className="text-[10px] text-stone-500 font-semibold uppercase tracking-wider">
+                          Chọn voucher có sẵn:
+                        </div>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {coupons.filter(c => c.isActive).map((c) => {
+                            const isSelected = promoApplied === c.code;
+                            const isEligible = subtotal >= c.minOrderTotal;
+                            return (
+                              <button
+                                key={c.id}
+                                type="button"
+                                onClick={() => handleApplyPromo(c.code)}
+                                className={`p-2 rounded-xl border text-left transition-all relative ${
+                                  isSelected
+                                    ? 'border-emerald-500 bg-emerald-50 text-emerald-950 ring-1 ring-emerald-500'
+                                    : isEligible
+                                    ? 'border-amber-300 bg-amber-50/70 hover:bg-amber-100/70 text-stone-800 cursor-pointer'
+                                    : 'border-stone-200 bg-stone-50 text-stone-400 opacity-60'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span className="font-mono font-black text-xs text-[#D95829]">{c.code}</span>
+                                  {isSelected && <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />}
+                                </div>
+                                <div className="text-[10.5px] font-bold text-stone-800 truncate mt-0.5">
+                                  {c.type === 'fixed' ? `Giảm ${formatVND(c.value)}` : `Giảm ${c.value}%`}
+                                </div>
+                                <div className="text-[9px] text-stone-500 truncate">
+                                  Đơn từ {formatVND(c.minOrderTotal)}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Ô nhập mã giảm giá khác */}
+                    <div className="flex gap-2 pt-1 border-t border-[#F0EAE0]">
                       <input
                         type="text"
-                        placeholder="Mã ưu đãi: FRESH20 hoặc FREESHIP"
+                        placeholder="Nhập mã voucher khác..."
                         value={promoCode}
                         onChange={(e) => {
                           setPromoCode(e.target.value);
                           setPromoMessage(null);
                         }}
-                        className="flex-1 bg-[#FAF7F2] border border-[#DDD6C8] rounded-xl px-3.5 py-2 text-xs uppercase text-[#222B25] placeholder-[#9AA59E] focus:outline-none focus:border-[#322821]"
+                        className="flex-1 bg-[#FAF7F2] border border-[#DDD6C8] rounded-xl px-3 py-1.5 text-xs uppercase text-[#222B25] placeholder-[#9AA59E] focus:outline-none focus:border-[#322821]"
                       />
                       <button
                         type="button"
-                        onClick={handleApplyPromo}
-                        className="px-4 py-2 rounded-xl bg-[#322821] hover:bg-[#211A15] text-xs font-bold text-white shadow-sm transition-all cursor-pointer shrink-0"
+                        onClick={() => handleApplyPromo()}
+                        className="px-3.5 py-1.5 rounded-xl bg-[#322821] hover:bg-[#211A15] text-xs font-bold text-white shadow-sm transition-all cursor-pointer shrink-0"
                       >
                         Áp Dụng
                       </button>
                     </div>
+
                     {promoMessage && (
                       <p className={`text-[11px] font-semibold flex items-center gap-1 ${
                         promoApplied ? 'text-emerald-700' : 'text-amber-800'
                       }`}>
-                        <Tag className="w-3.5 h-3.5" /> {promoMessage}
+                        <Tag className="w-3.5 h-3.5 shrink-0" />
+                        <span>{promoMessage}</span>
                       </p>
                     )}
                   </div>
@@ -949,8 +1040,17 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                     disabled={cartItems.length === 0}
                     className="flex-1 py-3.5 rounded-full font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 bg-[#322821] hover:bg-[#211A15] text-white shadow-md shadow-[#322821]/25 active:scale-[0.98] cursor-pointer transition-all"
                   >
-                    <span>XÁC NHẬN ĐẶT ĐƠN ({formatVND(grandTotal)})</span>
-                    <CheckCircle2 className="w-4 h-4" />
+                    {customer.paymentMethod === 'vietqr' ? (
+                      <>
+                        <span>TIẾP TỤC CHUYỂN KHOẢN ({formatVND(grandTotal)})</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    ) : (
+                      <>
+                        <span>XÁC NHẬN ĐẶT ĐƠN ({formatVND(grandTotal)})</span>
+                        <CheckCircle2 className="w-4 h-4" />
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
@@ -958,7 +1058,142 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
           )}
 
           {/* ======================================================== */}
-          {/* BƯỚC 3: ĐẶT HÀNG THÀNH CÔNG & HƯỚNG DẪN THANH TOÁN */}
+          {/* BƯỚC: QUÉT MÃ VIETQR CHUYỂN KHOẢN (TRƯỚC KHI THÀNH CÔNG) */}
+          {/* ======================================================== */}
+          {step === 'payment' && (
+            <div className="flex-1 overflow-y-auto p-4 sm:p-5 flex flex-col justify-between bg-white text-left">
+              <div className="space-y-3.5">
+                {/* Tiêu đề */}
+                <div className="p-3.5 rounded-3xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 text-center space-y-1">
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 text-amber-900 text-xs font-bold uppercase">
+                    <QrCode className="w-3.5 h-3.5 text-[#D95829]" />
+                    <span>Quét Mã VietQR Chuyển Khoản</span>
+                  </div>
+                  <h3 className="font-display font-black text-lg text-[#322821]">
+                    {placedServingType === 'dine-in' ? `Thanh Toán Tại ${placedTableNumber}` : 'Thanh Toán Đơn Giao Tận Nơi'}
+                  </h3>
+                  <p className="text-xs text-stone-600">
+                    Mã đơn hàng: <strong className="font-mono text-[#D95829]">#{createdOrderCode}</strong> • Cần chuyển: <strong className="text-red-600 text-sm font-sans">{formatVND(placedGrandTotal)}</strong>
+                  </p>
+                </div>
+
+                {/* Hướng dẫn khi ngồi tại bàn */}
+                {placedServingType === 'dine-in' && (
+                  <div className="p-2.5 rounded-xl bg-amber-50/70 border border-amber-200 text-[11px] text-amber-950 space-y-1">
+                    <div className="font-bold flex items-center gap-1.5 text-amber-900">
+                      <span>🪑 Hướng dẫn thanh toán tại bàn:</span>
+                    </div>
+                    <ul className="list-disc pl-4 space-y-0.5 text-amber-900/90 text-[10.5px]">
+                      <li>Mở App Ngân hàng hoặc MoMo quét mã QR bên dưới.</li>
+                      <li>Nội dung chuyển khoản <strong>{createdOrderCode}</strong> và số tiền đã được tự động điền sẵn.</li>
+                      <li>Sau khi chuyển xong, bấm nút <strong>"TÔI ĐÃ CHUYỂN KHOẢN XONG"</strong> bên dưới để hoàn tất đặt món!</li>
+                    </ul>
+                  </div>
+                )}
+
+                {/* Khung mã QR VietQR chuẩn ACB */}
+                <div className="relative w-48 h-48 sm:w-52 sm:h-52 mx-auto p-2 bg-white rounded-2xl border-2 border-dashed border-amber-400 shadow-sm flex items-center justify-center">
+                  <img
+                    src={`https://img.vietqr.io/image/ACB-37051817-compact2.png?amount=${placedGrandTotal}&addInfo=${encodeURIComponent(createdOrderCode)}&accountName=NGO%20THANH%20PHUC%20HAU`}
+                    alt="VietQR code ACB"
+                    className="w-full h-full object-contain rounded-xl"
+                    onError={(e) => {
+                      e.currentTarget.src = '/acb-vietqr.png';
+                    }}
+                  />
+                </div>
+                <p className="text-[10.5px] text-stone-500 italic text-center -mt-1">
+                  Mở app Ngân hàng / MoMo quét mã để tự động điền STK ACB & Nội dung đơn
+                </p>
+
+                {/* BẢNG CHI TIẾT THÔNG TIN CHUYỂN KHOẢN VÀ NÚT SAO CHÉP */}
+                <div className="bg-[#FAF7F2] border border-[#EAE3D2] rounded-2xl p-3 text-left space-y-2 text-xs">
+                  {/* Ngân hàng */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-stone-500">Ngân hàng:</span>
+                    <span className="font-bold text-[#322821]">ACB (Ngân Hàng Á Châu)</span>
+                  </div>
+
+                  {/* Số tài khoản */}
+                  <div className="flex items-center justify-between border-t border-[#EAE3D2]/70 pt-2">
+                    <span className="text-stone-500">Số tài khoản:</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-mono font-bold text-sm text-[#D95829]">37051817</span>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyText('37051817', 'stk')}
+                        className="px-2 py-0.5 rounded-md bg-white border border-[#DDD6C8] hover:bg-stone-100 text-[10px] font-semibold text-stone-700 flex items-center gap-1 transition-colors cursor-pointer"
+                      >
+                        <Copy className="w-3 h-3" />
+                        <span>{copiedField === 'stk' ? 'Đã chép!' : 'Sao chép'}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Chủ tài khoản */}
+                  <div className="flex items-center justify-between border-t border-[#EAE3D2]/70 pt-2">
+                    <span className="text-stone-500">Chủ tài khoản:</span>
+                    <span className="font-bold text-[#322821] uppercase">NGÔ THÀNH PHÚC HẬU</span>
+                  </div>
+
+                  {/* Số tiền */}
+                  <div className="flex items-center justify-between border-t border-[#EAE3D2]/70 pt-2">
+                    <span className="text-stone-500">Số tiền:</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-sans font-black text-sm text-[#D95829]">{formatVND(placedGrandTotal)}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyText(String(placedGrandTotal), 'amount')}
+                        className="px-2 py-0.5 rounded-md bg-white border border-[#DDD6C8] hover:bg-stone-100 text-[10px] font-semibold text-stone-700 flex items-center gap-1 transition-colors cursor-pointer"
+                      >
+                        <Copy className="w-3 h-3" />
+                        <span>{copiedField === 'amount' ? 'Đã chép!' : 'Sao chép'}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Nội dung chuyển khoản */}
+                  <div className="flex items-center justify-between border-t border-[#EAE3D2]/70 pt-2 bg-amber-50/80 -mx-3 -mb-3 p-2.5 rounded-b-2xl border-amber-200">
+                    <div>
+                      <span className="block text-[10px] text-amber-800 font-medium">Nội dung chuyển khoản (bắt buộc):</span>
+                      <span className="font-mono font-black text-sm text-red-600">{createdOrderCode}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyText(createdOrderCode, 'memo')}
+                      className="px-2.5 py-1 rounded-lg bg-[#322821] hover:bg-black text-[11px] font-bold text-white flex items-center gap-1 shadow-xs transition-colors cursor-pointer"
+                    >
+                      <Copy className="w-3 h-3 text-amber-300" />
+                      <span>{copiedField === 'memo' ? 'Đã chép!' : 'Sao chép'}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* NÚT XÁC NHẬN CHUYỂN KHOẢN XONG */}
+              <div className="pt-3 border-t border-[#EAE3D2] space-y-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handleFinalizeOrder('vietqr')}
+                  className="w-full py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-extrabold text-xs sm:text-sm uppercase tracking-wide shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer"
+                >
+                  <CheckCircle2 className="w-5 h-5 text-white" />
+                  <span>TÔI ĐÃ CHUYỂN KHOẢN XONG →</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setStep('checkout')}
+                  className="w-full py-2 rounded-xl text-center text-xs text-stone-500 hover:text-stone-800 font-semibold transition-colors cursor-pointer"
+                >
+                  ← Quay lại sửa thông tin nhận trà
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ======================================================== */}
+          {/* BƯỚC 3: ĐẶT HÀNG THÀNH CÔNG */}
           {/* ======================================================== */}
           {step === 'success' && (
             <div className="flex-1 overflow-y-auto p-4 sm:p-5 flex flex-col justify-between bg-white text-left">
@@ -1038,131 +1273,21 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                   </div>
                 </div>
 
-                {/* CHI TIẾT THANH TOÁN: VIETQR HOẶC TIỀN MẶT */}
+                {/* CHI TIẾT THANH TOÁN: ĐÃ XÁC NHẬN CHUYỂN KHOẢN HOẶC TIỀN MẶT */}
                 {placedPaymentMethod === 'vietqr' ? (
-                  <div className="p-4 rounded-3xl bg-white border-2 border-amber-500/50 text-[#222B25] shadow-md text-center space-y-3.5">
-                    <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-50 border border-amber-300 text-amber-950 text-xs font-bold uppercase tracking-wider">
-                      <QrCode className="w-4 h-4 text-[#D95829]" />
-                      <span>{placedServingType === 'dine-in' ? `Quét Mã Chuyển Khoản Tại ${placedTableNumber}` : 'Quét Mã VietQR Chuyển Khoản'}</span>
+                  <div className="p-3.5 rounded-2xl bg-emerald-50 text-emerald-950 border-2 border-emerald-400 text-xs font-bold flex flex-col items-center justify-center gap-1.5 shadow-xs animate-fade-in">
+                    <div className="flex items-center gap-1.5 text-emerald-800 text-sm">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-700" />
+                      <span>ĐÃ XÁC NHẬN CHUYỂN KHOẢN THÀNH CÔNG!</span>
                     </div>
-
-                    {/* Hướng dẫn 3 bước rõ ràng khi ngồi tại bàn */}
-                    {placedServingType === 'dine-in' && (
-                      <div className="p-2.5 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 text-left text-[11px] text-amber-950 space-y-1">
-                        <div className="font-bold flex items-center gap-1.5 text-amber-900">
-                          <span>🪑 Hướng dẫn thanh toán tại bàn:</span>
-                        </div>
-                        <ul className="list-disc pl-4 space-y-0.5 text-amber-900/90 text-[10.5px]">
-                          <li>Mở App Ngân hàng hoặc MoMo quét mã QR bên dưới.</li>
-                          <li>Nội dung chuyển khoản <strong>{createdOrderCode}</strong> và số tiền đã được tự động điền sẵn.</li>
-                          <li>Chuyển xong bấm <strong>"Tôi Đã Chuyển Khoản Xong"</strong>, trà sẽ được mang ra tận bàn!</li>
-                        </ul>
-                      </div>
-                    )}
-
-                    {/* Khung mã QR VietQR chuẩn ngân hàng ACB */}
-                    <div className="relative w-52 h-52 mx-auto p-2.5 bg-white rounded-2xl border-2 border-dashed border-amber-400 shadow-sm flex items-center justify-center">
-                      <img
-                        src={`https://img.vietqr.io/image/ACB-37051817-compact2.png?amount=${placedGrandTotal || grandTotal}&addInfo=${encodeURIComponent(createdOrderCode)}&accountName=NGO%20THANH%20PHUC%20HAU`}
-                        alt="VietQR code ACB"
-                        className="w-full h-full object-contain rounded-xl"
-                        onError={(e) => {
-                          e.currentTarget.src = '/acb-vietqr.png';
-                        }}
-                      />
+                    <div className="text-center font-normal text-[11px] text-emerald-900 leading-relaxed">
+                      Số tiền: <strong className="font-bold font-sans text-emerald-800">{formatVND(placedGrandTotal || grandTotal)}</strong> (VietQR ACB - STK 37051817)
                     </div>
-                    <p className="text-[11px] text-stone-600 italic">
-                      Mở app Ngân hàng / MoMo quét mã để tự động điền STK ACB & Nội dung đơn
+                    <p className="text-[11px] font-medium text-emerald-900 text-center leading-relaxed">
+                      {placedServingType === 'dine-in' 
+                        ? `Quý khách cứ yên tâm ngồi tại ${placedTableNumber}, Barista đã nhận được đơn thanh toán và nhân viên sẽ mang trà phục vụ tận bàn ngay!`
+                        : 'Quầy Barista đã nhận được thanh toán và đang chuẩn bị ly trà để giao nhanh đến quý khách!'}
                     </p>
-
-                    {/* BẢNG CHI TIẾT THÔNG TIN CHUYỂN KHOẢN VÀ NÚT SAO CHÉP */}
-                    <div className="bg-[#FAF7F2] border border-[#EAE3D2] rounded-2xl p-3 text-left space-y-2 text-xs">
-                      {/* Ngân hàng */}
-                      <div className="flex items-center justify-between">
-                        <span className="text-stone-500">Ngân hàng:</span>
-                        <span className="font-bold text-[#322821]">ACB (Ngân Hàng Á Châu)</span>
-                      </div>
-
-                      {/* Số tài khoản */}
-                      <div className="flex items-center justify-between border-t border-[#EAE3D2]/70 pt-2">
-                        <span className="text-stone-500">Số tài khoản:</span>
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-mono font-bold text-sm text-[#D95829]">37051817</span>
-                          <button
-                            type="button"
-                            onClick={() => handleCopyText('37051817', 'stk')}
-                            className="px-2 py-0.5 rounded-md bg-white border border-[#DDD6C8] hover:bg-stone-100 text-[10px] font-semibold text-stone-700 flex items-center gap-1 transition-colors cursor-pointer"
-                          >
-                            <Copy className="w-3 h-3" />
-                            <span>{copiedField === 'stk' ? 'Đã chép!' : 'Sao chép'}</span>
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Chủ tài khoản */}
-                      <div className="flex items-center justify-between border-t border-[#EAE3D2]/70 pt-2">
-                        <span className="text-stone-500">Chủ tài khoản:</span>
-                        <span className="font-bold text-[#322821] uppercase">NGÔ THÀNH PHÚC HẬU</span>
-                      </div>
-
-                      {/* Số tiền */}
-                      <div className="flex items-center justify-between border-t border-[#EAE3D2]/70 pt-2">
-                        <span className="text-stone-500">Số tiền:</span>
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-sans font-black text-sm text-[#D95829]">{formatVND(placedGrandTotal || grandTotal)}</span>
-                          <button
-                            type="button"
-                            onClick={() => handleCopyText(String(placedGrandTotal || grandTotal), 'amount')}
-                            className="px-2 py-0.5 rounded-md bg-white border border-[#DDD6C8] hover:bg-stone-100 text-[10px] font-semibold text-stone-700 flex items-center gap-1 transition-colors cursor-pointer"
-                          >
-                            <Copy className="w-3 h-3" />
-                            <span>{copiedField === 'amount' ? 'Đã chép!' : 'Sao chép'}</span>
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Nội dung chuyển khoản */}
-                      <div className="flex items-center justify-between border-t border-[#EAE3D2]/70 pt-2 bg-amber-50/80 -mx-3 -mb-3 p-2.5 rounded-b-2xl border-amber-200">
-                        <div>
-                          <span className="block text-[10px] text-amber-800 font-medium">Nội dung chuyển khoản (bắt buộc):</span>
-                          <span className="font-mono font-black text-sm text-red-600">{createdOrderCode}</span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleCopyText(createdOrderCode, 'memo')}
-                          className="px-2.5 py-1 rounded-lg bg-[#322821] hover:bg-black text-[11px] font-bold text-white flex items-center gap-1 shadow-xs transition-colors cursor-pointer"
-                        >
-                          <Copy className="w-3 h-3 text-amber-300" />
-                          <span>{copiedField === 'memo' ? 'Đã chép!' : 'Sao chép'}</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    {!isTransferConfirmed ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsTransferConfirmed(true);
-                          playSuccessSound(true);
-                        }}
-                        className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase shadow-sm flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                      >
-                        <Check className="w-4 h-4" />
-                        <span>Tôi Đã Chuyển Khoản Xong</span>
-                      </button>
-                    ) : (
-                      <div className="p-3.5 rounded-2xl bg-emerald-50 text-emerald-950 border-2 border-emerald-400 text-xs font-bold flex flex-col items-center justify-center gap-1.5 shadow-xs animate-fade-in">
-                        <div className="flex items-center gap-1.5 text-emerald-800 text-sm">
-                          <CheckCircle2 className="w-5 h-5 text-emerald-700" />
-                          <span>Đã xác nhận chuyển khoản thành công!</span>
-                        </div>
-                        <p className="text-[11px] font-medium text-emerald-900 text-center leading-relaxed">
-                          {placedServingType === 'dine-in' 
-                            ? `Quý khách cứ yên tâm ngồi tại ${placedTableNumber}, Barista đã nhận được đơn thanh toán và nhân viên sẽ mang trà phục vụ tận bàn ngay!`
-                            : 'Quầy Barista đã nhận được thanh toán và đang chuẩn bị ly trà để giao nhanh đến quý khách!'}
-                        </p>
-                      </div>
-                    )}
                   </div>
                 ) : (
                   <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-950 text-xs space-y-1.5">
