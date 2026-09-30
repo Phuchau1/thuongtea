@@ -1865,11 +1865,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                           </div>
                           <div className="w-32 h-32 bg-white p-1.5 rounded-xl border border-[#DDD6C8] shadow-2xs my-1 flex items-center justify-center">
                             <img
-                              src={`https://img.vietqr.io/image/MB-0794999406-compact2.png?amount=${posGrandTotal}&addInfo=Thanh%20toan%20don%20hang&accountName=NGUYEN%20TAN%20PHUC%20HAU`}
+                              src={`https://img.vietqr.io/image/ACB-37051817-compact2.png?amount=${posGrandTotal}&addInfo=Thanh%20toan%20don%20hang&accountName=NGO%20THANH%20PHUC%20HAU`}
                               alt="Mã VietQR"
                               className="w-full h-full object-contain"
                               onError={(e) => {
-                                e.currentTarget.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=2|99|0794999406|THUONG%20TEA||0|0|${posGrandTotal}|Thanh%20toan%20don%20hang|transfer_myqr`;
+                                e.currentTarget.src = '/acb-vietqr.png';
                               }}
                             />
                           </div>
@@ -1877,7 +1877,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                             {formatVND(posGrandTotal)}
                           </div>
                           <div className="text-[10px] text-[#69776E] mt-0.5">
-                            MB Bank • 0794999406 • NGUYỄN TẤN PHÚC HẬU
+                            ACB • 37051817 • NGÔ THÀNH PHÚC HẬU
                           </div>
                         </div>
 
@@ -3298,11 +3298,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
             <div className="w-48 h-48 mx-auto my-4 bg-white p-2 rounded-2xl border border-[#DDD6C8] shadow-sm flex items-center justify-center">
               <img
-                src={`https://img.vietqr.io/image/MB-0794999406-compact2.png?amount=${posGrandTotal}&addInfo=Thanh%20toan%20don%20hang&accountName=NGUYEN%20TAN%20PHUC%20HAU`}
+                src={`https://img.vietqr.io/image/ACB-37051817-compact2.png?amount=${posGrandTotal}&addInfo=Thanh%20toan%20don%20hang&accountName=NGO%20THANH%20PHUC%20HAU`}
                 alt="Mã VietQR"
                 className="w-full h-full object-contain"
                 onError={(e) => {
-                  e.currentTarget.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=2|99|0794999406|THUONG%20TEA||0|0|${posGrandTotal}|Thanh%20toan%20don%20hang|transfer_myqr`;
+                  e.currentTarget.src = '/acb-vietqr.png';
                 }}
               />
             </div>
@@ -3311,7 +3311,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               {formatVND(posGrandTotal)}
             </div>
             <div className="text-xs text-stone-600 mb-4">
-              MB Bank • 0794999406 • NGUYỄN TẤN PHÚC HẬU
+              ACB • 37051817 • NGÔ THÀNH PHÚC HẬU
             </div>
 
             <div className="flex gap-2">

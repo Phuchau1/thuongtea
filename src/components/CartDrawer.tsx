@@ -1035,11 +1035,11 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                     {/* Khung mã QR VietQR chuẩn ngân hàng */}
                     <div className="relative w-48 h-48 mx-auto p-2 bg-white rounded-2xl border-2 border-dashed border-amber-400 shadow-sm flex items-center justify-center">
                       <img
-                        src={`https://img.vietqr.io/image/MB-0794999406-compact2.png?amount=${placedGrandTotal || grandTotal}&addInfo=${encodeURIComponent(createdOrderCode)}&accountName=NGUYEN%20TAN%20PHUC%20HAU`}
+                        src={`https://img.vietqr.io/image/ACB-37051817-compact2.png?amount=${placedGrandTotal || grandTotal}&addInfo=${encodeURIComponent(createdOrderCode)}&accountName=NGO%20THANH%20PHUC%20HAU`}
                         alt="VietQR code"
                         className="w-full h-full object-contain rounded-xl"
                         onError={(e) => {
-                          e.currentTarget.src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=2|99|0794999406|THUONG%20TEA||0|0|${placedGrandTotal || grandTotal}|${createdOrderCode}|transfer_myqr`;
+                          e.currentTarget.src = '/acb-vietqr.png';
                         }}
                       />
                     </div>
@@ -1052,17 +1052,17 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                       {/* Ngân hàng */}
                       <div className="flex items-center justify-between">
                         <span className="text-stone-500">Ngân hàng:</span>
-                        <span className="font-bold text-[#322821]">MB Bank (Ngân Hàng Quân Đội)</span>
+                        <span className="font-bold text-[#322821]">ACB (Ngân Hàng Á Châu)</span>
                       </div>
 
                       {/* Số tài khoản */}
                       <div className="flex items-center justify-between border-t border-[#EAE3D2]/70 pt-2">
                         <span className="text-stone-500">Số tài khoản:</span>
                         <div className="flex items-center gap-1.5">
-                          <span className="font-mono font-bold text-sm text-[#D95829]">0794999406</span>
+                          <span className="font-mono font-bold text-sm text-[#D95829]">37051817</span>
                           <button
                             type="button"
-                            onClick={() => handleCopyText('0794999406', 'stk')}
+                            onClick={() => handleCopyText('37051817', 'stk')}
                             className="px-2 py-0.5 rounded-md bg-white border border-[#DDD6C8] hover:bg-stone-100 text-[10px] font-semibold text-stone-700 flex items-center gap-1 transition-colors"
                           >
                             <Copy className="w-3 h-3" />
@@ -1074,7 +1074,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                       {/* Chủ tài khoản */}
                       <div className="flex items-center justify-between border-t border-[#EAE3D2]/70 pt-2">
                         <span className="text-stone-500">Chủ tài khoản:</span>
-                        <span className="font-bold text-[#322821] uppercase">NGUYỄN TẤN PHÚC HẬU</span>
+                        <span className="font-bold text-[#322821] uppercase">NGÔ THÀNH PHÚC HẬU</span>
                       </div>
 
                       {/* Số tiền */}
