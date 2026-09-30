@@ -514,16 +514,18 @@ export const FruitTeaHero: React.FC<FruitTeaHeroProps> = ({
       >
         <div className="max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 lg:gap-8 items-center my-auto">
           
-          {/* Cột 1 (Mobile: Hiện TRÊN - Sân khấu ly trà 3D tách nền trong suốt tự nhiên) */}
-          <div className="order-1 lg:order-2 lg:col-span-7 relative h-[240px] sm:h-[320px] md:h-[440px] lg:h-[520px] flex items-center justify-center">
+          {/* Cột 1 (Mobile: Hiện TRÊN - Sân khấu ly trà tách nền sắc nét, chuẩn giao diện điện thoại) */}
+          <div className="order-1 lg:order-2 lg:col-span-7 relative h-[270px] sm:h-[320px] md:h-[440px] lg:h-[520px] flex items-center justify-center">
             
-            {/* Vòng hào quang sáng ấm áp */}
+            {/* Vòng hào quang mềm mại tự nhiên - dùng radial-gradient mượt mà, triệt tiêu hoàn toàn lỗi vỡ hình vuông trên iOS */}
             <div 
-              className="absolute w-56 sm:w-80 md:w-96 h-56 sm:h-80 md:h-96 rounded-full blur-3xl opacity-35 transition-colors duration-700 pointer-events-none"
-              style={{ backgroundColor: currentTea.panel }}
+              className="absolute w-64 sm:w-80 md:w-96 h-64 sm:h-80 md:h-96 rounded-full pointer-events-none transition-all duration-700"
+              style={{ 
+                background: `radial-gradient(circle, ${currentTea.panel || '#E0633A'}35 0%, ${currentTea.panel || '#E0633A'}10 45%, transparent 70%)` 
+              }}
             />
 
-            {/* Các ly trà xoay chuyển carousel mượt mà */}
+            {/* Các ly trà xoay chuyển mượt mà */}
             {heroTeas.map((item, index) => {
               const role = getRole(index);
 
@@ -539,24 +541,40 @@ export const FruitTeaHero: React.FC<FruitTeaHeroProps> = ({
                 const tiltTranslateX = isMobile ? 0 : tilt.x * 15;
                 const tiltTranslateY = isMobile ? 0 : tilt.y * 15;
 
-                transformStr = `translate3d(calc(-50% + ${tiltTranslateX}px), calc(-50% + ${tiltTranslateY}px), 0px) scale(${scale}) rotateX(${tiltRotateX}deg) rotateY(${tiltRotateY}deg)`;
+                transformStr = isMobile 
+                  ? 'translate3d(-50%, -50%, 0px)' 
+                  : `translate3d(calc(-50% + ${tiltTranslateX}px), calc(-50% + ${tiltTranslateY}px), 0px) scale(${scale}) rotateX(${tiltRotateX}deg) rotateY(${tiltRotateY}deg)`;
                 opacityVal = 1;
                 zIndexVal = 10;
-                filterVal = 'drop-shadow(0 20px 25px rgba(22, 78, 61, 0.2))';
+                filterVal = 'drop-shadow(0 15px 25px rgba(0,0,0,0.12))';
               } else if (role === 'left') {
-                const offsetPx = isMobile ? -85 : -260;
-                transformStr = `translate3d(calc(-50% + ${offsetPx}px), -45%, 0px) scale(${isMobile ? 0.52 : 0.68}) rotateY(12deg)`;
-                opacityVal = isMobile ? 0.35 : 0.45;
-                zIndexVal = 5;
-                filterVal = 'blur(1px) drop-shadow(0 10px 15px rgba(0,0,0,0.08))';
+                if (isMobile) {
+                  // Trên điện thoại ẩn ly phụ để ly chính to rõ, không bị chồng chéo mờ
+                  transformStr = 'translate3d(calc(-50% - 100px), -50%, 0px) scale(0.6)';
+                  opacityVal = 0;
+                  zIndexVal = 1;
+                } else {
+                  const offsetPx = -260;
+                  transformStr = `translate3d(calc(-50% + ${offsetPx}px), -45%, 0px) scale(0.68) rotateY(12deg)`;
+                  opacityVal = 0.45;
+                  zIndexVal = 5;
+                  filterVal = 'drop-shadow(0 10px 15px rgba(0,0,0,0.08))';
+                }
               } else if (role === 'right') {
-                const offsetPx = isMobile ? 85 : 260;
-                transformStr = `translate3d(calc(-50% + ${offsetPx}px), -45%, 0px) scale(${isMobile ? 0.52 : 0.68}) rotateY(-12deg)`;
-                opacityVal = isMobile ? 0.35 : 0.45;
-                zIndexVal = 5;
-                filterVal = 'blur(1px) drop-shadow(0 10px 15px rgba(0,0,0,0.08))';
+                if (isMobile) {
+                  // Trên điện thoại ẩn ly phụ
+                  transformStr = 'translate3d(calc(-50% + 100px), -50%, 0px) scale(0.6)';
+                  opacityVal = 0;
+                  zIndexVal = 1;
+                } else {
+                  const offsetPx = 260;
+                  transformStr = `translate3d(calc(-50% + ${offsetPx}px), -45%, 0px) scale(0.68) rotateY(-12deg)`;
+                  opacityVal = 0.45;
+                  zIndexVal = 5;
+                  filterVal = 'drop-shadow(0 10px 15px rgba(0,0,0,0.08))';
+                }
               } else {
-                transformStr = 'translate3d(-50%, -30%, 0px) scale(0.4)';
+                transformStr = 'translate3d(-50%, -50%, 0px) scale(0.4)';
                 opacityVal = 0;
                 zIndexVal = 1;
               }
@@ -570,7 +588,7 @@ export const FruitTeaHero: React.FC<FruitTeaHeroProps> = ({
                     else if (role === 'right') navigate('next');
                     else if (role === 'center') onSelectTea(item);
                   }}
-                  className={`absolute top-1/2 left-1/2 will-change-transform cursor-pointer transition-all duration-600 ease-smooth`}
+                  className={`absolute top-1/2 left-1/2 will-change-transform cursor-pointer transition-all duration-500 ease-out`}
                   style={{
                     transform: transformStr,
                     opacity: opacityVal,
@@ -584,14 +602,16 @@ export const FruitTeaHero: React.FC<FruitTeaHeroProps> = ({
                       alt={item.name}
                       loading={role === 'center' ? 'eager' : 'lazy'}
                       decoding="async"
-                      className="max-h-[210px] sm:max-h-[300px] md:max-h-[420px] lg:max-h-[460px] w-auto object-contain select-none pointer-events-none transition-transform duration-300 group-hover/cup:scale-105"
+                      className="max-h-[250px] sm:max-h-[300px] md:max-h-[420px] lg:max-h-[460px] w-auto object-contain select-none pointer-events-none transition-transform duration-300 group-hover/cup:scale-105"
                       draggable={false}
                     />
 
-                    {/* Vòng bóng đổ mềm mại dưới đáy cốc */}
+                    {/* Vòng bóng đổ mềm mại dưới đáy cốc dùng radial gradient chuẩn */}
                     <div 
-                      className="absolute -bottom-3 sm:-bottom-4 left-1/2 -translate-x-1/2 w-32 sm:w-44 h-6 sm:h-8 rounded-full blur-md opacity-35 pointer-events-none"
-                      style={{ backgroundColor: item.bg }}
+                      className="absolute -bottom-2 sm:-bottom-4 left-1/2 -translate-x-1/2 w-32 sm:w-44 h-5 sm:h-8 rounded-full pointer-events-none"
+                      style={{ 
+                        background: 'radial-gradient(ellipse at center, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.04) 50%, transparent 70%)'
+                      }}
                     />
                   </div>
                 </div>
