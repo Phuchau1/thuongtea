@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   X, Trash2, Plus, Minus, ShoppingBag, ArrowRight, CheckCircle2, 
   QrCode, Banknote, Tag, Eye, UtensilsCrossed, Bike, Award, Clock,
-  User, Phone, Check
+  User, Phone, Check, Copy
 } from 'lucide-react';
 import type { CartItem, OrderCustomerInfo } from '../types/tea';
 import type { PosOrder } from '../types/pos';
@@ -42,7 +42,19 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   const [currentMemberPoints, setCurrentMemberPoints] = useState<number>(0);
   const [placedItems, setPlacedItems] = useState<CartItem[]>([]);
   const [placedPaymentMethod, setPlacedPaymentMethod] = useState<'vietqr' | 'cod'>('vietqr');
+  const [placedGrandTotal, setPlacedGrandTotal] = useState<number>(0);
   const [isTransferConfirmed, setIsTransferConfirmed] = useState<boolean>(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  const handleCopyText = (text: string, field: string) => {
+    try {
+      navigator.clipboard.writeText(text);
+      setCopiedField(field);
+      setTimeout(() => setCopiedField(null), 2000);
+    } catch (e) {
+      console.debug('Copy error', e);
+    }
+  };
 
   const allTables: string[] = allTablesList && allTablesList.length > 0
     ? allTablesList
@@ -175,8 +187,9 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
     const orderNum = Math.floor(100 + Math.random() * 899);
     setCreatedOrderCode(orderId);
 
-    // Lưu snapshot các món vừa đặt và phương thức thanh toán
+    // Lưu snapshot các món vừa đặt, tổng tiền và phương thức thanh toán
     setPlacedItems([...cartItems]);
+    setPlacedGrandTotal(grandTotal);
     setPlacedPaymentMethod(customer.paymentMethod as 'vietqr' | 'cod');
     setIsTransferConfirmed(false);
 
@@ -240,8 +253,9 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
         : 'Đã thanh toán VietQR',
     };
 
-    // Push into POS system and sound the kitchen bell!
+    // Push into POS system
     addOrder(newPosOrder);
+    onClearCart(); // XÓA SẠCH SẢN PHẨM VỪA ĐẶT KHỎI GIỎ HÀNG NGAY LẬP TỨC!
     playSuccessSound(true);
     setStep('success');
   };
@@ -1012,28 +1026,88 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
 
                 {/* CHI TIẾT THANH TOÁN: VIETQR HOẶC THANH TOÁN TẠI QUẦY */}
                 {placedPaymentMethod === 'vietqr' ? (
-                  <div className="p-4 rounded-2xl bg-[#FAF7F2] border border-[#EAE3D2] text-[#222B25] shadow-xs text-center space-y-2">
-                    <div className="text-[11px] font-bold text-[#322821] uppercase tracking-wider flex items-center justify-center gap-1.5">
+                  <div className="p-4 rounded-3xl bg-white border-2 border-amber-500/50 text-[#222B25] shadow-md text-center space-y-3">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold uppercase tracking-wider">
                       <QrCode className="w-4 h-4 text-[#D95829]" />
-                      <span>QUÉT MÃ VIETQR THANH TOÁN</span>
+                      <span>Quét Mã VietQR Chuyển Khoản</span>
                     </div>
 
-                    <div className="w-40 h-40 mx-auto p-1.5 bg-white rounded-2xl border border-[#DDD6C8] shadow-2xs flex items-center justify-center">
+                    {/* Khung mã QR VietQR chuẩn ngân hàng */}
+                    <div className="relative w-48 h-48 mx-auto p-2 bg-white rounded-2xl border-2 border-dashed border-amber-400 shadow-sm flex items-center justify-center">
                       <img
-                        src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=2|99|0908886688|THUONG%20TEA||0|0|${grandTotal}|${createdOrderCode}|transfer_myqr`}
+                        src={`https://img.vietqr.io/image/MB-0794999406-compact2.png?amount=${placedGrandTotal || grandTotal}&addInfo=${encodeURIComponent(createdOrderCode)}&accountName=NGUYEN%20TAN%20PHUC%20HAU`}
                         alt="VietQR code"
-                        className="w-full h-full object-contain"
+                        className="w-full h-full object-contain rounded-xl"
+                        onError={(e) => {
+                          e.currentTarget.src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=2|99|0794999406|THUONG%20TEA||0|0|${placedGrandTotal || grandTotal}|${createdOrderCode}|transfer_myqr`;
+                        }}
                       />
                     </div>
+                    <p className="text-[11px] text-stone-500 italic">
+                      Mở app Ngân hàng hoặc MoMo quét mã để tự động điền STK & Nội dung
+                    </p>
 
-                    <div className="text-base font-black font-sans text-[#D95829]">
-                      {formatVND(grandTotal)}
-                    </div>
-                    <div className="text-[11px] text-[#69786F]">
-                      MB Bank • 0908886688 • THƯỢNG TEA
-                    </div>
-                    <div className="text-[10px] text-[#8C7E74]">
-                      Nội dung chuyển khoản: <strong className="text-[#322821] font-mono">{createdOrderCode}</strong>
+                    {/* BẢNG CHI TIẾT THÔNG TIN CHUYỂN KHOẢN VÀ NÚT SAO CHÉP */}
+                    <div className="bg-[#FAF7F2] border border-[#EAE3D2] rounded-2xl p-3 text-left space-y-2 text-xs">
+                      {/* Ngân hàng */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-stone-500">Ngân hàng:</span>
+                        <span className="font-bold text-[#322821]">MB Bank (Ngân Hàng Quân Đội)</span>
+                      </div>
+
+                      {/* Số tài khoản */}
+                      <div className="flex items-center justify-between border-t border-[#EAE3D2]/70 pt-2">
+                        <span className="text-stone-500">Số tài khoản:</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono font-bold text-sm text-[#D95829]">0794999406</span>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyText('0794999406', 'stk')}
+                            className="px-2 py-0.5 rounded-md bg-white border border-[#DDD6C8] hover:bg-stone-100 text-[10px] font-semibold text-stone-700 flex items-center gap-1 transition-colors"
+                          >
+                            <Copy className="w-3 h-3" />
+                            <span>{copiedField === 'stk' ? 'Đã chép!' : 'Sao chép'}</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Chủ tài khoản */}
+                      <div className="flex items-center justify-between border-t border-[#EAE3D2]/70 pt-2">
+                        <span className="text-stone-500">Chủ tài khoản:</span>
+                        <span className="font-bold text-[#322821] uppercase">NGUYỄN TẤN PHÚC HẬU</span>
+                      </div>
+
+                      {/* Số tiền */}
+                      <div className="flex items-center justify-between border-t border-[#EAE3D2]/70 pt-2">
+                        <span className="text-stone-500">Số tiền:</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-sans font-black text-sm text-[#D95829]">{formatVND(placedGrandTotal || grandTotal)}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyText(String(placedGrandTotal || grandTotal), 'amount')}
+                            className="px-2 py-0.5 rounded-md bg-white border border-[#DDD6C8] hover:bg-stone-100 text-[10px] font-semibold text-stone-700 flex items-center gap-1 transition-colors"
+                          >
+                            <Copy className="w-3 h-3" />
+                            <span>{copiedField === 'amount' ? 'Đã chép!' : 'Sao chép'}</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Nội dung chuyển khoản */}
+                      <div className="flex items-center justify-between border-t border-[#EAE3D2]/70 pt-2 bg-amber-50/80 -mx-3 -mb-3 p-2.5 rounded-b-2xl border-amber-200">
+                        <div>
+                          <span className="block text-[10px] text-amber-800 font-medium">Nội dung chuyển khoản (bắt buộc):</span>
+                          <span className="font-mono font-black text-sm text-red-600">{createdOrderCode}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyText(createdOrderCode, 'memo')}
+                          className="px-2.5 py-1 rounded-lg bg-[#322821] hover:bg-black text-[11px] font-bold text-white flex items-center gap-1 shadow-xs transition-colors"
+                        >
+                          <Copy className="w-3 h-3 text-amber-300" />
+                          <span>{copiedField === 'memo' ? 'Đã chép!' : 'Sao chép'}</span>
+                        </button>
+                      </div>
                     </div>
 
                     {!isTransferConfirmed ? (
@@ -1043,13 +1117,13 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                           setIsTransferConfirmed(true);
                           playSuccessSound(true);
                         }}
-                        className="w-full py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white font-bold text-xs uppercase shadow-sm flex items-center justify-center gap-1.5 transition-colors"
+                        className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase shadow-sm flex items-center justify-center gap-1.5 transition-colors"
                       >
-                        <Check className="w-3.5 h-3.5" />
-                        <span>Tôi Đã Chuyển Khoản Thành Công</span>
+                        <Check className="w-4 h-4" />
+                        <span>Tôi Đã Chuyển Khoản Xong</span>
                       </button>
                     ) : (
-                      <div className="p-2 rounded-xl bg-emerald-100 text-emerald-900 border border-emerald-300 text-xs font-bold flex items-center justify-center gap-1.5">
+                      <div className="p-2.5 rounded-xl bg-emerald-100 text-emerald-900 border border-emerald-300 text-xs font-bold flex items-center justify-center gap-1.5">
                         <CheckCircle2 className="w-4 h-4 text-emerald-700" />
                         <span>Đã ghi nhận thông tin chuyển khoản VietQR!</span>
                       </div>
@@ -1069,7 +1143,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                     </p>
                     <div className="pt-1.5 border-t border-amber-200/80 flex justify-between font-bold">
                       <span>Cần thanh toán:</span>
-                      <span className="font-sans text-[#D95829] text-sm">{formatVND(grandTotal)}</span>
+                      <span className="font-sans text-[#D95829] text-sm">{formatVND(placedGrandTotal || grandTotal)}</span>
                     </div>
                   </div>
                 )}
@@ -1079,7 +1153,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                   <div className="p-3 rounded-2xl bg-[#FAF7F2] border border-[#EAE3D2] text-xs">
                     <div className="font-bold text-[#322821] mb-2 flex justify-between items-center">
                       <span>Món đã đặt ({placedItems.length} món):</span>
-                      <span className="text-[#D95829] font-sans font-bold">{formatVND(grandTotal)}</span>
+                      <span className="text-[#D95829] font-sans font-bold">{formatVND(placedGrandTotal || grandTotal)}</span>
                     </div>
                     <div className="divide-y divide-[#EAE3D2] max-h-32 overflow-y-auto pr-1">
                       {placedItems.map((item) => (

@@ -6,7 +6,6 @@ import type { FruitTeaItem, Topping, DiningTable } from '../types/tea';
 import { FRUIT_TEAS, TOPPINGS, INITIAL_TABLES } from '../data/teas';
 import type { StaffMember, AttendanceRecord } from '../types/staff';
 import { INITIAL_STAFF, INITIAL_ATTENDANCE } from '../types/staff';
-import { playNewOrderAlertSound } from '../utils/audio';
 import { 
   apiGetOrders, 
   apiCreateOrder, 
@@ -524,7 +523,6 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (type === 'NEW_ORDER') {
           setOrders((prev) => [payload, ...prev.filter((o) => o.id !== payload.id)]);
           setUnreadPosOrdersCount((c) => c + 1);
-          playNewOrderAlertSound(payload, true);
         } else if (type === 'UPDATE_STATUS') {
           setOrders((prev) =>
             prev.map((o) => (o.id === payload.orderId ? { ...o, status: payload.status } : o))
@@ -901,7 +899,6 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setOrders((prev) => [orderWithCheck, ...prev.filter(o => o.id !== orderWithCheck.id)]);
     setActiveCustomerOrderId(order.id);
     setUnreadPosOrdersCount((c) => c + 1);
-    playNewOrderAlertSound(orderWithCheck, true);
     apiCreateOrder(orderWithCheck);
     broadcast('NEW_ORDER', orderWithCheck);
 
