@@ -582,6 +582,8 @@ export const FruitTeaHero: React.FC<FruitTeaHeroProps> = ({
                     <img
                       src={item.image}
                       alt={item.name}
+                      loading={role === 'center' ? 'eager' : 'lazy'}
+                      decoding="async"
                       className="max-h-[210px] sm:max-h-[300px] md:max-h-[420px] lg:max-h-[460px] w-auto object-contain select-none pointer-events-none transition-transform duration-300 group-hover/cup:scale-105"
                       draggable={false}
                     />

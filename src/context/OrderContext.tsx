@@ -21,7 +21,8 @@ import {
   apiGetToppings,
   apiSaveToppings,
   apiGetTables,
-  apiSaveTables
+  apiSaveTables,
+  apiListenOrders
 } from '../api';
 
 interface OrderContextType {
@@ -387,21 +388,14 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   }, []);
 
-  // Đồng bộ Realtime từ API định kỳ mỗi 2.5s (giữa điện thoại khách và quầy POS)
+  // Đồng bộ Realtime từ Firebase Firestore (WebSocket realtime không chiếm băng thông)
   useEffect(() => {
-    const interval = setInterval(() => {
-      apiGetOrders().then((apiOrders) => {
-        if (apiOrders && apiOrders.length > 0) {
-          setOrders((current) => {
-            if (JSON.stringify(current) !== JSON.stringify(apiOrders)) {
-              return apiOrders;
-            }
-            return current;
-          });
-        }
-      });
-    }, 2500);
-    return () => clearInterval(interval);
+    const unsub = apiListenOrders((newOrders) => {
+      if (newOrders && newOrders.length > 0) {
+        setOrders(newOrders);
+      }
+    });
+    return () => unsub();
   }, []);
 
   // Lưu localStorage mỗi khi thay đổi

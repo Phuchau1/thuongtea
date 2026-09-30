@@ -140,6 +140,8 @@ export const MenuSection: React.FC<MenuSectionProps> = ({ onSelectTea }) => {
                     <img
                       src={tea.image}
                       alt={tea.name}
+                      loading="lazy"
+                      decoding="async"
                       className="max-h-full w-auto object-contain select-none filter drop-shadow-sm"
                       draggable={false}
                     />

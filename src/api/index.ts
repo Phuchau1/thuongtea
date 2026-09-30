@@ -6,11 +6,35 @@ import {
   getDocs,
   setDoc,
   updateDoc,
-  deleteDoc
+  deleteDoc,
+  onSnapshot
 } from 'firebase/firestore';
 import type { PosOrder } from '../types/pos';
 import type { MemberUser } from '../types/user';
 import type { FruitTeaItem, Topping, DiningTable } from '../types/tea';
+
+/**
+ * Lắng nghe đơn hàng Realtime từ Firestore (thay vì polling lặp lại liên tục)
+ */
+export function apiListenOrders(callback: (orders: PosOrder[]) => void): () => void {
+  try {
+    return onSnapshot(collection(db, 'orders'), (snap) => {
+      const orders: PosOrder[] = [];
+      snap.forEach((d) => orders.push(d.data() as PosOrder));
+      if (orders.length > 0) {
+        try {
+          localStorage.setItem('AN_TRA_ORDERS', JSON.stringify(orders));
+        } catch {}
+        callback(orders);
+      }
+    }, (err) => {
+      console.debug('Firestore onSnapshot listen error:', err);
+    });
+  } catch (err) {
+    console.debug('apiListenOrders fallback error:', err);
+    return () => {};
+  }
+}
 
 /**
  * Lấy danh sách toàn bộ đơn hàng từ Firestore
