@@ -875,6 +875,19 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                       </div>
                     </div>
                   </div>
+
+                  {/* Giải thích rõ ràng khi Ngồi Tại Bàn + Thanh toán VietQR */}
+                  {servingType === 'dine-in' && customer.paymentMethod === 'vietqr' && (
+                    <div className="mt-2.5 p-3 rounded-xl bg-amber-50 border border-amber-300 text-[11px] text-amber-950 space-y-1 animate-fade-in">
+                      <div className="font-bold flex items-center gap-1.5 text-amber-900">
+                        <QrCode className="w-3.5 h-3.5 text-[#D95829]" />
+                        <span>Quy trình chuyển khoản tại bàn ({tableNumber}):</span>
+                      </div>
+                      <p className="text-amber-900 leading-relaxed">
+                        Sau khi bấm <strong>"Xác nhận đặt đơn"</strong>, màn hình sẽ hiển thị ngay <strong>Mã QR VietQR</strong> kèm STK ACB <strong>37051817</strong>. Bạn chỉ cần mở App ngân hàng quét mã ngay tại bàn, không cần ra quầy thu ngân. Barista nhận được thông báo đã thanh toán và mang trà ra tận bàn!
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Ghi chú đơn hàng */}
@@ -1023,14 +1036,28 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
 
                 {/* CHI TIẾT THANH TOÁN: VIETQR HOẶC TIỀN MẶT */}
                 {placedPaymentMethod === 'vietqr' ? (
-                  <div className="p-4 rounded-3xl bg-white border-2 border-amber-500/50 text-[#222B25] shadow-md text-center space-y-3">
-                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold uppercase tracking-wider">
+                  <div className="p-4 rounded-3xl bg-white border-2 border-amber-500/50 text-[#222B25] shadow-md text-center space-y-3.5">
+                    <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-50 border border-amber-300 text-amber-950 text-xs font-bold uppercase tracking-wider">
                       <QrCode className="w-4 h-4 text-[#D95829]" />
-                      <span>Quét Mã VietQR Chuyển Khoản</span>
+                      <span>{placedServingType === 'dine-in' ? `Quét Mã Chuyển Khoản Tại ${placedTableNumber}` : 'Quét Mã VietQR Chuyển Khoản'}</span>
                     </div>
 
+                    {/* Hướng dẫn 3 bước rõ ràng khi ngồi tại bàn */}
+                    {placedServingType === 'dine-in' && (
+                      <div className="p-2.5 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 text-left text-[11px] text-amber-950 space-y-1">
+                        <div className="font-bold flex items-center gap-1.5 text-amber-900">
+                          <span>🪑 Hướng dẫn thanh toán tại bàn:</span>
+                        </div>
+                        <ul className="list-disc pl-4 space-y-0.5 text-amber-900/90 text-[10.5px]">
+                          <li>Mở App Ngân hàng hoặc MoMo quét mã QR bên dưới.</li>
+                          <li>Nội dung chuyển khoản <strong>{createdOrderCode}</strong> và số tiền đã được tự động điền sẵn.</li>
+                          <li>Chuyển xong bấm <strong>"Tôi Đã Chuyển Khoản Xong"</strong>, trà sẽ được mang ra tận bàn!</li>
+                        </ul>
+                      </div>
+                    )}
+
                     {/* Khung mã QR VietQR chuẩn ngân hàng ACB */}
-                    <div className="relative w-48 h-48 mx-auto p-2 bg-white rounded-2xl border-2 border-dashed border-amber-400 shadow-sm flex items-center justify-center">
+                    <div className="relative w-52 h-52 mx-auto p-2.5 bg-white rounded-2xl border-2 border-dashed border-amber-400 shadow-sm flex items-center justify-center">
                       <img
                         src={`https://img.vietqr.io/image/ACB-37051817-compact2.png?amount=${placedGrandTotal || grandTotal}&addInfo=${encodeURIComponent(createdOrderCode)}&accountName=NGO%20THANH%20PHUC%20HAU`}
                         alt="VietQR code ACB"
@@ -1040,8 +1067,8 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                         }}
                       />
                     </div>
-                    <p className="text-[11px] text-stone-500 italic">
-                      Mở ứng dụng Ngân hàng hoặc MoMo quét mã để tự động điền STK & Nội dung
+                    <p className="text-[11px] text-stone-600 italic">
+                      Mở app Ngân hàng / MoMo quét mã để tự động điền STK ACB & Nội dung đơn
                     </p>
 
                     {/* BẢNG CHI TIẾT THÔNG TIN CHUYỂN KHOẢN VÀ NÚT SAO CHÉP */}
@@ -1120,9 +1147,16 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                         <span>Tôi Đã Chuyển Khoản Xong</span>
                       </button>
                     ) : (
-                      <div className="p-2.5 rounded-xl bg-emerald-100 text-emerald-900 border border-emerald-300 text-xs font-bold flex items-center justify-center gap-1.5">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-700" />
-                        <span>Đã ghi nhận quý khách hoàn tất chuyển khoản!</span>
+                      <div className="p-3.5 rounded-2xl bg-emerald-50 text-emerald-950 border-2 border-emerald-400 text-xs font-bold flex flex-col items-center justify-center gap-1.5 shadow-xs animate-fade-in">
+                        <div className="flex items-center gap-1.5 text-emerald-800 text-sm">
+                          <CheckCircle2 className="w-5 h-5 text-emerald-700" />
+                          <span>Đã xác nhận chuyển khoản thành công!</span>
+                        </div>
+                        <p className="text-[11px] font-medium text-emerald-900 text-center leading-relaxed">
+                          {placedServingType === 'dine-in' 
+                            ? `Quý khách cứ yên tâm ngồi tại ${placedTableNumber}, Barista đã nhận được đơn thanh toán và nhân viên sẽ mang trà phục vụ tận bàn ngay!`
+                            : 'Quầy Barista đã nhận được thanh toán và đang chuẩn bị ly trà để giao nhanh đến quý khách!'}
+                        </p>
                       </div>
                     )}
                   </div>
