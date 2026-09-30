@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useRef } from 'react';
 import type { PosOrder, OrderStatus, MenuItemStockStatus } from '../types/pos';
 import type { MemberUser } from '../types/user';
 import { INITIAL_MEMBERS } from '../types/user';
@@ -25,12 +25,17 @@ import {
   apiGetStaff,
   apiSaveStaff,
   apiGetAttendance,
-  apiSaveAttendanceRecord
+  apiSaveAttendanceRecord,
+  apiDeleteOrder,
+  apiGetStock,
+  apiSaveStock,
+  apiDeleteMember
 } from '../api';
 
 interface OrderContextType {
   orders: PosOrder[];
   addOrder: (order: PosOrder) => void;
+  deleteOrder: (orderId: string) => void;
   updateOrderStatus: (orderId: string, status: OrderStatus) => void;
   updatePaymentStatus: (orderId: string, paymentStatus: 'paid' | 'unpaid') => void;
   updateOrder: (orderId: string, updated: Partial<PosOrder>) => void;
@@ -73,6 +78,7 @@ interface OrderContextType {
   logoutMember: () => void;
   addPointsToMember: (phone: string, points: number, spentAmount: number) => void;
   deductPointsFromMember: (phone: string, points: number) => boolean;
+  deleteMember: (phone: string) => void;
 
   // Quản lý Nhân Viên & Phân Quyền
   staffMembers: StaffMember[];
@@ -362,42 +368,46 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   });
 
-  // Tự động tải dữ liệu từ API Server khi khởi động
+  const isInitialFirestoreLoadedRef = useRef(false);
+
+  // Tự động tải dữ liệu từ Firestore khi khởi động (bảo đảm không bị ghi đè dữ liệu cũ)
   useEffect(() => {
-    apiGetOrders().then((apiOrders) => {
-      if (apiOrders && apiOrders.length > 0) {
-        setOrders(apiOrders);
+    Promise.allSettled([
+      apiGetOrders(),
+      apiGetMembers(),
+      apiGetProducts(),
+      apiGetToppings(),
+      apiGetTables(),
+      apiGetStaff(),
+      apiGetAttendance(),
+      apiGetStock()
+    ]).then(([ordersRes, membersRes, prodsRes, topsRes, tabsRes, staffRes, attRes, stockRes]) => {
+      if (ordersRes.status === 'fulfilled' && ordersRes.value && ordersRes.value.length > 0) {
+        setOrders(ordersRes.value);
       }
-    });
-    apiGetMembers().then((apiMembers) => {
-      if (apiMembers && apiMembers.length > 0) {
-        setMembers(apiMembers);
+      if (membersRes.status === 'fulfilled' && membersRes.value && membersRes.value.length > 0) {
+        setMembers(membersRes.value);
       }
-    });
-    apiGetProducts().then((apiProds) => {
-      if (apiProds && apiProds.length > 0) {
-        setProducts(apiProds);
+      if (prodsRes.status === 'fulfilled' && prodsRes.value && prodsRes.value.length > 0) {
+        setProducts(prodsRes.value);
       }
-    });
-    apiGetToppings().then((apiTops) => {
-      if (apiTops && apiTops.length > 0) {
-        setToppings(apiTops);
+      if (topsRes.status === 'fulfilled' && topsRes.value && topsRes.value.length > 0) {
+        setToppings(topsRes.value);
       }
-    });
-    apiGetTables().then((apiTabs) => {
-      if (apiTabs && apiTabs.length > 0) {
-        setTables(apiTabs);
+      if (tabsRes.status === 'fulfilled' && tabsRes.value && tabsRes.value.length > 0) {
+        setTables(tabsRes.value);
       }
-    });
-    apiGetStaff().then((apiStaff) => {
-      if (apiStaff && apiStaff.length > 0) {
-        setStaffMembers(apiStaff);
+      if (staffRes.status === 'fulfilled' && staffRes.value && staffRes.value.length > 0) {
+        setStaffMembers(staffRes.value);
       }
-    });
-    apiGetAttendance().then((apiAtt) => {
-      if (apiAtt && apiAtt.length > 0) {
-        setAttendanceRecords(apiAtt);
+      if (attRes.status === 'fulfilled' && attRes.value && attRes.value.length > 0) {
+        setAttendanceRecords(attRes.value);
       }
+      if (stockRes.status === 'fulfilled' && stockRes.value && Object.keys(stockRes.value).length > 0) {
+        setStockStatus(stockRes.value);
+      }
+      // Đánh dấu đã tải xong toàn bộ dữ liệu từ Firestore
+      isInitialFirestoreLoadedRef.current = true;
     });
   }, []);
 
@@ -423,6 +433,9 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     try {
       localStorage.setItem('AN_TRA_STOCK', JSON.stringify(stockStatus));
+      if (isInitialFirestoreLoadedRef.current) {
+        apiSaveStock(stockStatus);
+      }
     } catch (e) {
       console.warn('Could not save stock', e);
     }
@@ -437,7 +450,9 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     try {
       localStorage.setItem('AN_TRA_PRODUCTS', JSON.stringify(products));
-      apiSaveProducts(products);
+      if (isInitialFirestoreLoadedRef.current) {
+        apiSaveProducts(products);
+      }
     } catch (e) {
       console.warn('Could not save products', e);
     }
@@ -446,7 +461,9 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     try {
       localStorage.setItem('AN_TRA_TOPPINGS', JSON.stringify(toppings));
-      apiSaveToppings(toppings);
+      if (isInitialFirestoreLoadedRef.current) {
+        apiSaveToppings(toppings);
+      }
     } catch (e) {
       console.warn('Could not save toppings', e);
     }
@@ -455,7 +472,9 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     try {
       localStorage.setItem('AN_TRA_TABLES', JSON.stringify(tables));
-      apiSaveTables(tables);
+      if (isInitialFirestoreLoadedRef.current) {
+        apiSaveTables(tables);
+      }
     } catch (e) {
       console.warn('Could not save tables', e);
     }
@@ -464,7 +483,9 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     try {
       localStorage.setItem('AN_TRA_MEMBERS', JSON.stringify(members));
-      members.forEach((m) => apiSaveMember(m));
+      if (isInitialFirestoreLoadedRef.current) {
+        members.forEach((m) => apiSaveMember(m));
+      }
     } catch (e) {
       console.warn('Could not save members', e);
     }
@@ -481,7 +502,9 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     try {
       localStorage.setItem('AN_TRA_STAFF', JSON.stringify(staffMembers));
-      apiSaveStaff(staffMembers);
+      if (isInitialFirestoreLoadedRef.current) {
+        apiSaveStaff(staffMembers);
+      }
     } catch (e) {
       console.warn('Could not save staff', e);
     }
@@ -538,6 +561,8 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (type === 'NEW_ORDER') {
           setOrders((prev) => [payload, ...prev.filter((o) => o.id !== payload.id)]);
           setUnreadPosOrdersCount((c) => c + 1);
+        } else if (type === 'DELETE_ORDER') {
+          setOrders((prev) => prev.filter((o) => o.id !== payload));
         } else if (type === 'UPDATE_STATUS') {
           setOrders((prev) =>
             prev.map((o) => (o.id === payload.orderId ? { ...o, status: payload.status } : o))
@@ -564,6 +589,8 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           setToppings(payload);
         } else if (type === 'UPDATE_TABLES') {
           setTables(payload);
+        } else if (type === 'UPDATE_STAFF') {
+          setStaffMembers(payload);
         } else if (type === 'UPDATE_MEMBERS') {
           setMembers(payload);
         } else if (type === 'UPDATE_CURRENT_USER') {
@@ -605,6 +632,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setProducts((prev) => {
       const updated = [newProduct, ...prev];
       broadcast('UPDATE_PRODUCTS', updated);
+      apiSaveProducts(updated);
       return updated;
     });
   };
@@ -613,6 +641,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setProducts((prev) => {
       const updatedList = prev.map((item) => (item.id === id ? { ...item, ...updated } : item));
       broadcast('UPDATE_PRODUCTS', updatedList);
+      apiSaveProducts(updatedList);
       return updatedList;
     });
   };
@@ -621,6 +650,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setProducts((prev) => {
       const updatedList = prev.filter((item) => item.id !== id);
       broadcast('UPDATE_PRODUCTS', updatedList);
+      apiSaveProducts(updatedList);
       return updatedList;
     });
   };
@@ -628,6 +658,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const resetProductsToDefault = () => {
     setProducts(FRUIT_TEAS);
     broadcast('UPDATE_PRODUCTS', FRUIT_TEAS);
+    apiSaveProducts(FRUIT_TEAS);
   };
 
   // ==========================================
@@ -637,6 +668,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setToppings((prev) => {
       const updated = [...prev, newTopping];
       broadcast('UPDATE_TOPPINGS', updated);
+      apiSaveToppings(updated);
       return updated;
     });
   };
@@ -645,6 +677,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setToppings((prev) => {
       const updatedList = prev.map((item) => (item.id === id ? { ...item, ...updated } : item));
       broadcast('UPDATE_TOPPINGS', updatedList);
+      apiSaveToppings(updatedList);
       return updatedList;
     });
   };
@@ -653,6 +686,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setToppings((prev) => {
       const updatedList = prev.filter((item) => item.id !== id);
       broadcast('UPDATE_TOPPINGS', updatedList);
+      apiSaveToppings(updatedList);
       return updatedList;
     });
   };
@@ -663,6 +697,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         item.id === id ? { ...item, isAvailable: item.isAvailable === false ? true : false } : item
       );
       broadcast('UPDATE_TOPPINGS', updatedList);
+      apiSaveToppings(updatedList);
       return updatedList;
     });
   };
@@ -670,6 +705,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const resetToppingsToDefault = () => {
     setToppings(TOPPINGS);
     broadcast('UPDATE_TOPPINGS', TOPPINGS);
+    apiSaveToppings(TOPPINGS);
   };
 
   // ==========================================
@@ -688,6 +724,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setMembers(updated);
         try { localStorage.setItem('AN_TRA_MEMBERS', JSON.stringify(updated)); } catch {}
         broadcast('UPDATE_MEMBERS', updated);
+        apiSaveMember(existing);
       }
       setCurrentUser(existing);
       try { localStorage.setItem('AN_TRA_CURRENT_USER', JSON.stringify(existing)); } catch {}
@@ -715,6 +752,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } catch {}
     broadcast('UPDATE_MEMBERS', updated);
     broadcast('UPDATE_CURRENT_USER', newMember);
+    apiSaveMember(newMember);
     return newMember;
   };
 
@@ -728,6 +766,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const addPointsToMember = (phone: string, points: number, spentAmount: number) => {
     const cleanPhone = phone.replace(/\s+/g, '');
     setMembers((prev) => {
+      let targetToSave: MemberUser | null = null;
       const updated = prev.map((m) => {
         if (m.phone.replace(/\s+/g, '') === cleanPhone) {
           const newPoints = m.points + points;
@@ -738,6 +777,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           else if (newSpent >= 1000000) tier = 'Hạng Bạc';
 
           const updatedMember = { ...m, points: newPoints, totalSpent: newSpent, tier };
+          targetToSave = updatedMember;
           if (currentUser && currentUser.phone.replace(/\s+/g, '') === cleanPhone) {
             setCurrentUser(updatedMember);
           }
@@ -747,6 +787,9 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       });
       try { localStorage.setItem('AN_TRA_MEMBERS', JSON.stringify(updated)); } catch {}
       broadcast('UPDATE_MEMBERS', updated);
+      if (targetToSave) {
+        apiSaveMember(targetToSave);
+      }
       return updated;
     });
   };
@@ -757,9 +800,11 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!member || member.points < points) return false;
 
     setMembers((prev) => {
+      let targetToSave: MemberUser | null = null;
       const updated = prev.map((m) => {
         if (m.phone.replace(/\s+/g, '') === cleanPhone) {
           const updatedMember = { ...m, points: m.points - points };
+          targetToSave = updatedMember;
           if (currentUser && currentUser.phone.replace(/\s+/g, '') === cleanPhone) {
             setCurrentUser(updatedMember);
           }
@@ -769,9 +814,23 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       });
       try { localStorage.setItem('AN_TRA_MEMBERS', JSON.stringify(updated)); } catch {}
       broadcast('UPDATE_MEMBERS', updated);
+      if (targetToSave) {
+        apiSaveMember(targetToSave);
+      }
       return updated;
     });
     return true;
+  };
+
+  const deleteMember = (phone: string) => {
+    const cleanPhone = phone.replace(/\s+/g, '');
+    setMembers((prev) => {
+      const updated = prev.filter((m) => m.phone.replace(/\s+/g, '') !== cleanPhone);
+      try { localStorage.setItem('AN_TRA_MEMBERS', JSON.stringify(updated)); } catch {}
+      broadcast('UPDATE_MEMBERS', updated);
+      return updated;
+    });
+    apiDeleteMember(cleanPhone);
   };
 
   // ==========================================
@@ -795,20 +854,33 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const addStaffMember = (newStaff: StaffMember) => {
-    setStaffMembers((prev) => [newStaff, ...prev]);
+    setStaffMembers((prev) => {
+      const updated = [newStaff, ...prev];
+      broadcast('UPDATE_STAFF', updated);
+      apiSaveStaff(updated);
+      return updated;
+    });
   };
 
   const updateStaffMember = (id: string, updated: Partial<StaffMember>) => {
-    setStaffMembers((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, ...updated } : s))
-    );
+    setStaffMembers((prev) => {
+      const updatedList = prev.map((s) => (s.id === id ? { ...s, ...updated } : s));
+      broadcast('UPDATE_STAFF', updatedList);
+      apiSaveStaff(updatedList);
+      return updatedList;
+    });
     if (currentStaff && currentStaff.id === id) {
       setCurrentStaff((prev) => (prev ? { ...prev, ...updated } : null));
     }
   };
 
   const deleteStaffMember = (id: string) => {
-    setStaffMembers((prev) => prev.filter((s) => s.id !== id));
+    setStaffMembers((prev) => {
+      const updatedList = prev.filter((s) => s.id !== id);
+      broadcast('UPDATE_STAFF', updatedList);
+      apiSaveStaff(updatedList);
+      return updatedList;
+    });
   };
 
   // ==========================================
@@ -991,10 +1063,20 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     broadcast('UPDATE_ORDER', { orderId, updated });
   };
 
+  const deleteOrder = (orderId: string) => {
+    setOrders((prev) => {
+      const updated = prev.filter((o) => o.id !== orderId);
+      broadcast('DELETE_ORDER', orderId);
+      return updated;
+    });
+    apiDeleteOrder(orderId);
+  };
+
   const toggleStock = (teaId: string) => {
     setStockStatus((prev) => {
       const next = { ...prev, [teaId]: prev[teaId] === false ? true : false };
       broadcast('UPDATE_STOCK', next);
+      apiSaveStock(next);
       return next;
     });
   };
@@ -1063,6 +1145,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setTables((prev) => {
       const updated = [...prev, newTable];
       broadcast('UPDATE_TABLES', updated);
+      apiSaveTables(updated);
       return updated;
     });
   };
@@ -1073,6 +1156,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const oldName = targetTable?.name;
       const updatedList = prev.map((t) => (t.id === id ? { ...t, ...updated } : t));
       broadcast('UPDATE_TABLES', updatedList);
+      apiSaveTables(updatedList);
 
       // Nếu tên bàn thay đổi và có đơn hàng đang ở bàn cũ, cập nhật theo
       if (updated.name && oldName && updated.name !== oldName) {
@@ -1106,6 +1190,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setTables((prev) => {
       const updatedList = prev.filter((t) => t.id !== id);
       broadcast('UPDATE_TABLES', updatedList);
+      apiSaveTables(updatedList);
       return updatedList;
     });
 
@@ -1115,6 +1200,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const resetTablesToDefault = () => {
     setTables(INITIAL_TABLES);
     broadcast('UPDATE_TABLES', INITIAL_TABLES);
+    apiSaveTables(INITIAL_TABLES);
   };
 
   const activeCustomerOrder = orders.find((o) => o.id === activeCustomerOrderId) || null;
@@ -1124,6 +1210,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       value={{
         orders,
         addOrder,
+        deleteOrder,
         updateOrderStatus,
         updatePaymentStatus,
         updateOrder,
@@ -1166,6 +1253,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         logoutMember,
         addPointsToMember,
         deductPointsFromMember,
+        deleteMember,
 
         // Nhân viên & Phân quyền
         staffMembers,

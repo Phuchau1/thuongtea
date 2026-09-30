@@ -108,6 +108,17 @@ export async function apiUpdateOrder(orderId: string, updates: Partial<PosOrder>
 }
 
 /**
+ * Xóa vĩnh viễn một đơn hàng khỏi Firestore
+ */
+export async function apiDeleteOrder(orderId: string): Promise<void> {
+  try {
+    await deleteDoc(doc(db, 'orders', orderId));
+  } catch (err) {
+    console.debug('Firebase delete order fallback', err);
+  }
+}
+
+/**
  * Xóa bỏ các đơn trùng lặp trên Firestore
  */
 export async function apiClearDuplicateOrders(): Promise<PosOrder[]> {
@@ -319,4 +330,41 @@ export async function apiSaveAttendanceRecord(record: AttendanceRecord): Promise
     await setDoc(doc(db, 'attendance', String(docId)), record);
   } catch (err) {}
 }
+
+/**
+ * Lấy trạng thái tồn kho từ Firestore
+ */
+export async function apiGetStock(): Promise<Record<string, boolean>> {
+  try {
+    const snap = await getDoc(doc(db, 'config', 'stock'));
+    if (snap.exists() && snap.data()?.status) {
+      return snap.data().status as Record<string, boolean>;
+    }
+  } catch (err) {}
+  try {
+    const saved = localStorage.getItem('AN_TRA_STOCK');
+    return saved ? JSON.parse(saved) : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Lưu trạng thái tồn kho lên Firestore
+ */
+export async function apiSaveStock(stock: Record<string, boolean>): Promise<void> {
+  try {
+    await setDoc(doc(db, 'config', 'stock'), { status: stock });
+  } catch (err) {}
+}
+
+/**
+ * Xóa thành viên khỏi Firestore
+ */
+export async function apiDeleteMember(memberId: string): Promise<void> {
+  try {
+    await deleteDoc(doc(db, 'members', String(memberId)));
+  } catch (err) {}
+}
+
 

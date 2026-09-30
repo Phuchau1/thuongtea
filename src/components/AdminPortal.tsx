@@ -39,6 +39,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const { 
     orders, 
     addOrder,
+    deleteOrder,
     updateOrderStatus, 
     stockStatus, 
     toggleStock, 
@@ -2326,6 +2327,17 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                           title="In lại bill"
                         >
                           <Printer className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (window.confirm(`Bạn có chắc chắn muốn xóa vĩnh viễn đơn #${order.id}? Hành động này sẽ xóa dữ liệu trên hệ thống và Firebase.`)) {
+                              deleteOrder(order.id);
+                            }
+                          }}
+                          className="p-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 transition-colors"
+                          title="Xóa vĩnh viễn đơn hàng"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
