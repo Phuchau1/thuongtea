@@ -13,6 +13,8 @@ import type { PosOrder } from '../types/pos';
 import type { MemberUser } from '../types/user';
 import type { FruitTeaItem, Topping, DiningTable } from '../types/tea';
 import type { StaffMember, AttendanceRecord } from '../types/staff';
+import type { Coupon } from '../types/coupon';
+import { INITIAL_COUPONS } from '../types/coupon';
 
 /**
  * Lắng nghe đơn hàng Realtime từ Firestore (thay vì polling lặp lại liên tục)
@@ -379,5 +381,50 @@ export async function apiDeleteMember(memberId: string): Promise<void> {
     await deleteDoc(doc(db, 'members', String(memberId)));
   } catch (err) {}
 }
+
+/**
+ * Lấy danh sách Mã giảm giá từ Firestore
+ */
+export async function apiGetCoupons(): Promise<Coupon[]> {
+  try {
+    const snap = await getDoc(doc(db, 'config', 'coupons'));
+    if (snap.exists() && Array.isArray(snap.data()?.list)) {
+      const list = snap.data().list as Coupon[];
+      if (list.length > 0) {
+        try {
+          localStorage.setItem('AN_TRA_COUPONS', JSON.stringify(list));
+        } catch {}
+        return list;
+      }
+    }
+  } catch (err) {
+    console.debug('Firebase get coupons fallback', err);
+  }
+  try {
+    const saved = localStorage.getItem('AN_TRA_COUPONS');
+    const fallbackList = saved ? JSON.parse(saved) : INITIAL_COUPONS;
+    // Tự động lưu khởi tạo lên Firestore để các thiết bị khác đồng bộ
+    apiSaveCoupons(fallbackList).catch(() => {});
+    return fallbackList;
+  } catch {
+    apiSaveCoupons(INITIAL_COUPONS).catch(() => {});
+    return INITIAL_COUPONS;
+  }
+}
+
+/**
+ * Lưu danh sách Mã giảm giá lên Firestore
+ */
+export async function apiSaveCoupons(coupons: Coupon[]): Promise<void> {
+  try {
+    localStorage.setItem('AN_TRA_COUPONS', JSON.stringify(coupons));
+  } catch {}
+  try {
+    await setDoc(doc(db, 'config', 'coupons'), { list: coupons });
+  } catch (err) {
+    console.error('Lỗi khi lưu mã giảm giá lên Firestore:', err);
+  }
+}
+
 
 

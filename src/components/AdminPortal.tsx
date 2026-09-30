@@ -8,13 +8,15 @@ import {
   TrendingUp, RefreshCw, X, RotateCcw,
   UserPlus, CheckCircle2, FileText,
   Volume2, VolumeX, Bell,
-  ArrowRight, Coffee, Columns3, CheckCheck
+  ArrowRight, Coffee, Columns3, CheckCheck,
+  Tag
 } from 'lucide-react';
 import { useOrders } from '../context/OrderContext';
 import type { PosOrder } from '../types/pos';
 import type { CartItem, FruitTeaItem } from '../types/tea';
 import type { StaffMember, StaffRole } from '../types/staff';
 import type { MemberUser } from '../types/user';
+import type { Coupon } from '../types/coupon';
 import { STAFF_PERMISSIONS } from '../types/staff';
 import { ReceiptPrintModal } from './ReceiptPrintModal';
 import { TableQrModal } from './TableQrModal';
@@ -22,6 +24,8 @@ import { ProductFormModal } from './ProductFormModal';
 import { StaffFormModal } from './StaffFormModal';
 import { ToppingFormModal } from './ToppingFormModal';
 import { TableFormModal } from './TableFormModal';
+import { MemberFormModal } from './MemberFormModal';
+import { CouponFormModal } from './CouponFormModal';
 import type { DiningTable, Topping } from '../types/tea';
 import { playClickSound, playSuccessSound, playNewOrderAlertSound, playPosCashierBell, stopPosRingtone } from '../utils/audio';
 
@@ -45,9 +49,19 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     toggleStock, 
     markPosOrdersAsRead,
     members,
+    addMember,
+    updateMember,
+    adjustMemberPoints,
+    deleteMember,
     deductPointsFromMember,
     loginMember,
     addPointsToMember,
+    // Mã giảm giá CRUD
+    coupons,
+    addCoupon,
+    updateCoupon,
+    deleteCoupon,
+    toggleCouponActive,
     // Sản phẩm CRUD
     products,
     addProduct,
@@ -92,7 +106,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const userRole: StaffRole = currentStaff?.role || 'admin';
 
   // Điều hướng Tab chính
-  const [activeTab, setActiveTab] = useState<'cashier' | 'tables' | 'kds' | 'menu' | 'revenue' | 'staff' | 'attendance'>(() => {
+  const [activeTab, setActiveTab] = useState<'cashier' | 'tables' | 'kds' | 'menu' | 'revenue' | 'staff' | 'attendance' | 'customers' | 'coupons'>(() => {
     if (userRole === 'barista') return 'kds';
     return 'cashier';
   });
@@ -117,6 +131,19 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const [isTableModalOpen, setIsTableModalOpen] = useState<boolean>(false);
   const [editingTable, setEditingTable] = useState<DiningTable | null>(null);
 
+  // Modals quản lý Khách Hàng & Thành Viên
+  const [isMemberModalOpen, setIsMemberModalOpen] = useState<boolean>(false);
+  const [editingMember, setEditingMember] = useState<MemberUser | null>(null);
+  const [memberSearch, setMemberSearch] = useState<string>('');
+  const [memberTierFilter, setMemberTierFilter] = useState<string>('all');
+  const [adjustPointsModalMember, setAdjustPointsModalMember] = useState<MemberUser | null>(null);
+  const [adjustPointsInput, setAdjustPointsInput] = useState<number>(50);
+
+  // Modals quản lý Mã Giảm Giá & Voucher
+  const [isCouponModalOpen, setIsCouponModalOpen] = useState<boolean>(false);
+  const [editingCoupon, setEditingCoupon] = useState<Coupon | null>(null);
+  const [couponSearch, setCouponSearch] = useState<string>('');
+
   // Switcher đổi nhân viên nhanh
   const [isStaffSwitcherOpen, setIsStaffSwitcherOpen] = useState<boolean>(false);
   const [showStaffPins, setShowStaffPins] = useState<{ [staffId: string]: boolean }>({});
@@ -136,6 +163,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const [isSearchFocused, setIsSearchFocused] = useState<boolean>(false);
   const [posNote, setPosNote] = useState<string>('');
   const [posUsePointsDiscount, setPosUsePointsDiscount] = useState<boolean>(false);
+  const [posCouponCode, setPosCouponCode] = useState<string>('');
   const [loadedTableOrderId, setLoadedTableOrderId] = useState<string | null>(null);
   
   // Phương thức thanh toán quầy: Tiền mặt, VietQR, Thẻ, Ghi nợ
@@ -260,7 +288,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   // Kiểm tra quyền truy cập tab
   const isTabAllowed = (tab: typeof activeTab) => {
     if (userRole === 'admin') return true;
-    if (userRole === 'cashier') return ['cashier', 'tables', 'attendance'].includes(tab);
+    if (userRole === 'cashier') return ['cashier', 'tables', 'customers', 'attendance'].includes(tab);
     if (userRole === 'barista') return ['kds', 'attendance'].includes(tab);
     return false;
   };
@@ -302,6 +330,33 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     return null;
   }, [selectedMember, posCustomerSearch, posPhone, members, matchingMembers]);
 
+  // Bộ lọc danh sách khách hàng trong Tab Khách Hàng
+  const filteredMembersList = useMemo(() => {
+    let list = members;
+    if (memberTierFilter !== 'all') {
+      list = list.filter((m) => m.tier === memberTierFilter);
+    }
+    if (memberSearch.trim()) {
+      const q = memberSearch.trim().toLowerCase();
+      const cleanDigits = q.replace(/\D/g, '');
+      list = list.filter(
+        (m) =>
+          m.name.toLowerCase().includes(q) ||
+          (cleanDigits.length >= 2 && m.phone.replace(/\D/g, '').includes(cleanDigits))
+      );
+    }
+    return list;
+  }, [members, memberTierFilter, memberSearch]);
+
+  // Bộ lọc danh sách mã giảm giá trong Tab Voucher
+  const filteredCouponsList = useMemo(() => {
+    if (!couponSearch.trim()) return coupons;
+    const q = couponSearch.trim().toLowerCase();
+    return coupons.filter(
+      (c) => c.code.toLowerCase().includes(q) || c.description.toLowerCase().includes(q)
+    );
+  }, [coupons, couponSearch]);
+
   const handleSelectMember = (m: MemberUser) => {
     playClickSound(true);
     setSelectedMember(m);
@@ -317,12 +372,29 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     setPosPhone('');
     setPosCustomerName('');
     setPosUsePointsDiscount(false);
+    setPosCouponCode('');
   };
 
   // Tính toán giỏ hàng POS
   const posSubtotal = posCart.reduce((sum, item) => sum + item.totalPrice, 0);
   const posPointsDiscount = (posUsePointsDiscount && foundMember && foundMember.points >= 50) ? 20000 : 0;
-  const posGrandTotal = Math.max(0, posSubtotal - posPointsDiscount);
+  
+  const appliedPosCoupon = useMemo(() => {
+    if (!posCouponCode.trim()) return null;
+    return coupons.find(c => c.isActive && c.code.toUpperCase() === posCouponCode.trim().toUpperCase()) || null;
+  }, [coupons, posCouponCode]);
+
+  const posCouponDiscount = useMemo(() => {
+    if (!appliedPosCoupon || posSubtotal < appliedPosCoupon.minOrderTotal) return 0;
+    if (appliedPosCoupon.type === 'fixed') {
+      return Math.min(posSubtotal, appliedPosCoupon.value);
+    }
+    const pct = Math.round((posSubtotal * appliedPosCoupon.value) / 100);
+    return appliedPosCoupon.maxDiscount ? Math.min(pct, appliedPosCoupon.maxDiscount) : pct;
+  }, [appliedPosCoupon, posSubtotal]);
+
+  const posTotalDiscount = posPointsDiscount + posCouponDiscount;
+  const posGrandTotal = Math.max(0, posSubtotal - posTotalDiscount);
 
   // Thêm món vào đơn POS
   const handleAddToCartPos = (tea: FruitTeaItem) => {
@@ -541,7 +613,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         updateOrder(loadedTableOrderId, {
           items: posCart,
           subtotal: posSubtotal,
-          discount: posPointsDiscount,
+          discount: posTotalDiscount,
           total: posGrandTotal,
           paymentStatus: isPaid ? 'paid' : 'unpaid',
           staffNote: staffNoteText,
@@ -556,7 +628,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           ...existing,
           items: posCart,
           subtotal: posSubtotal,
-          discount: posPointsDiscount,
+          discount: posTotalDiscount,
           total: posGrandTotal,
           paymentStatus: isPaid ? 'paid' : 'unpaid',
           staffNote: staffNoteText,
@@ -574,6 +646,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         setPosNote('');
         setPosDebtNote('');
         setPosUsePointsDiscount(false);
+        setPosCouponCode('');
         setCashTendered(0);
         return;
       }
@@ -599,7 +672,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       items: posCart,
       subtotal: posSubtotal,
       shippingFee: 0,
-      discount: posPointsDiscount,
+      discount: posTotalDiscount,
       total: posGrandTotal,
       status: 'preparing',
       paymentStatus: method === 'debt' ? 'unpaid' : 'paid',
@@ -620,6 +693,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     setPosNote('');
     setPosDebtNote('');
     setPosUsePointsDiscount(false);
+    setPosCouponCode('');
     setCashTendered(0);
     setLoadedTableOrderId(null);
   };
@@ -1112,7 +1186,49 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             </button>
           )}
 
-          {/* TAB 7: CHẤM CÔNG ĐỨNG QUẦY */}
+          {/* TAB 7: QUẢN LÝ KHÁCH HÀNG & TÍCH ĐIỂM */}
+          {isTabAllowed('customers') && (
+            <button
+              onClick={() => {
+                setActiveTab('customers');
+                playClickSound(true);
+              }}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${
+                activeTab === 'customers'
+                  ? 'bg-[#322821] text-white shadow-md'
+                  : 'text-[#5A6860] hover:bg-[#F3EFE6]'
+              }`}
+            >
+              <UserCheck className="w-4 h-4 text-teal-500" />
+              <span>Khách Hàng</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-teal-100 text-teal-800 font-bold">
+                {members.length}
+              </span>
+            </button>
+          )}
+
+          {/* TAB 8: QUẢN LÝ MÃ GIẢM GIÁ & VOUCHER */}
+          {isTabAllowed('coupons') && (
+            <button
+              onClick={() => {
+                setActiveTab('coupons');
+                playClickSound(true);
+              }}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${
+                activeTab === 'coupons'
+                  ? 'bg-[#322821] text-white shadow-md'
+                  : 'text-[#5A6860] hover:bg-[#F3EFE6]'
+              }`}
+            >
+              <Tag className="w-4 h-4 text-rose-500" />
+              <span>Mã Giảm Giá</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-rose-100 text-rose-800 font-bold">
+                {coupons.length}
+              </span>
+            </button>
+          )}
+
+          {/* TAB 9: CHẤM CÔNG ĐỨNG QUẦY */}
           <button
             onClick={() => {
               setActiveTab('attendance');
@@ -1626,6 +1742,66 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   </div>
                 ) : (
                   <>
+                    {/* Tạm tính & Chọn Voucher POS */}
+                    <div className="bg-[#FAF7F2] p-2 rounded-xl border border-[#DDD6C8] mb-2 space-y-1.5 text-xs">
+                      <div className="flex items-center justify-between text-[#55635B]">
+                        <span>Tạm tính ({posCart.reduce((sum, it) => sum + it.quantity, 0)} ly):</span>
+                        <span className="font-mono font-bold text-[#322821]">{formatVND(posSubtotal)}</span>
+                      </div>
+
+                      {/* Chọn Mã Voucher Giảm Giá */}
+                      <div className="flex items-center gap-1.5 pt-1 border-t border-[#EAE3D2]">
+                        <Tag className="w-3.5 h-3.5 text-[#D95829] shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <select
+                            value={posCouponCode}
+                            onChange={(e) => setPosCouponCode(e.target.value)}
+                            className="w-full text-[11px] bg-white border border-[#DDD6C8] rounded-lg px-2 py-1 font-medium text-[#322821] focus:outline-none focus:border-[#D95829]"
+                          >
+                            <option value="">-- Áp dụng Voucher / Mã giảm giá --</option>
+                            {coupons.filter(c => c.isActive).map(c => (
+                              <option key={c.id} value={c.code}>
+                                {c.code} - {c.type === 'fixed' ? `Giảm ${formatVND(c.value)}` : `Giảm ${c.value}%`} (Đơn từ {formatVND(c.minOrderTotal)})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        {posCouponCode && (
+                          <button
+                            type="button"
+                            onClick={() => setPosCouponCode('')}
+                            className="p-1 text-gray-400 hover:text-red-500 rounded"
+                            title="Bỏ chọn voucher"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Thông báo chi tiết giảm giá nếu có */}
+                      {posTotalDiscount > 0 && (
+                        <div className="space-y-0.5 text-[11px] text-emerald-700 bg-emerald-50/80 p-1.5 rounded-lg border border-emerald-200">
+                          {posPointsDiscount > 0 && (
+                            <div className="flex justify-between items-center">
+                              <span>🪙 Đổi 50 điểm tích lũy:</span>
+                              <span className="font-mono font-bold">-{formatVND(posPointsDiscount)}</span>
+                            </div>
+                          )}
+                          {posCouponDiscount > 0 && (
+                            <div className="flex justify-between items-center">
+                              <span>🎟️ Voucher {appliedPosCoupon?.code}:</span>
+                              <span className="font-mono font-bold">-{formatVND(posCouponDiscount)}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-between pt-1 border-t border-[#DDD6C8]">
+                        <span className="font-bold text-[#322821]">Khách Cần Trả:</span>
+                        <span className="text-base font-sans font-black text-[#D95829]">{formatVND(posGrandTotal)}</span>
+                      </div>
+                    </div>
+
                     {/* 4 Tabs Phương thức thanh toán */}
                     <div className="grid grid-cols-4 gap-1 p-1 bg-[#FAF7F2] rounded-2xl border border-[#DDD6C8] mb-2 text-xs font-bold">
                       <button
@@ -3198,6 +3374,395 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           </div>
         )}
 
+        {/* ======================================================== */}
+        {/* TAB 8: QUẢN LÝ KHÁCH HÀNG & THÀNH VIÊN                   */}
+        {/* ======================================================== */}
+        {activeTab === 'customers' && (
+          <div className="space-y-6">
+            {/* Header và nút thêm mới */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-3xl border border-[#DDD5C5] shadow-xs">
+              <div>
+                <h3 className="font-display font-bold text-xl text-[#322821] flex items-center gap-2">
+                  <UserCheck className="w-5 h-5 text-teal-600" />
+                  <span>Quản Lý Khách Hàng & Điểm Tích Lũy</span>
+                </h3>
+                <p className="text-xs text-[#6B7870] mt-0.5">
+                  Theo dõi danh sách hội viên, phân hạng thẻ và quản lý điểm thưởng đổi quà
+                </p>
+              </div>
+
+              <button
+                onClick={() => {
+                  setEditingMember(null);
+                  setIsMemberModalOpen(true);
+                  playClickSound(true);
+                }}
+                className="px-4 py-2.5 rounded-xl bg-[#322821] hover:bg-[#211A15] text-white text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-md transition-all self-start sm:self-auto"
+              >
+                <UserPlus className="w-4 h-4 text-emerald-300" />
+                <span>Thêm Khách Hàng Mới</span>
+              </button>
+            </div>
+
+            {/* 4 Thẻ thống kê nhanh */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+              <div className="bg-white p-4 rounded-2xl border border-[#DDD5C5] shadow-xs">
+                <div className="text-[11px] font-bold text-[#7A8780] uppercase tracking-wider">Tổng Hội Viên</div>
+                <div className="text-2xl font-black text-[#322821] mt-1">{members.length}</div>
+                <div className="text-[10px] text-teal-700 mt-0.5">Khách đã đăng ký</div>
+              </div>
+
+              <div className="bg-white p-4 rounded-2xl border border-[#DDD5C5] shadow-xs">
+                <div className="text-[11px] font-bold text-[#7A8780] uppercase tracking-wider">Điểm Lưu Hành</div>
+                <div className="text-2xl font-black text-amber-600 mt-1">
+                  {members.reduce((s, m) => s + (m.points || 0), 0)}đ
+                </div>
+                <div className="text-[10px] text-[#7A8780] mt-0.5">Tổng điểm thưởng</div>
+              </div>
+
+              <div className="bg-white p-4 rounded-2xl border border-[#DDD5C5] shadow-xs">
+                <div className="text-[11px] font-bold text-[#7A8780] uppercase tracking-wider">Hội Viên VIP</div>
+                <div className="text-2xl font-black text-purple-700 mt-1">
+                  {members.filter(m => m.tier === 'Kim Cương' || m.tier === 'Hạng Vàng').length}
+                </div>
+                <div className="text-[10px] text-purple-600 mt-0.5">Vàng & Kim Cương</div>
+              </div>
+
+              <div className="bg-white p-4 rounded-2xl border border-[#DDD5C5] shadow-xs">
+                <div className="text-[11px] font-bold text-[#7A8780] uppercase tracking-wider">Doanh Số Hội Viên</div>
+                <div className="text-2xl font-black text-emerald-700 font-sans mt-1">
+                  {formatVND(members.reduce((s, m) => s + (m.totalSpent || 0), 0))}
+                </div>
+                <div className="text-[10px] text-emerald-600 mt-0.5">Tích lũy mua hàng</div>
+              </div>
+            </div>
+
+            {/* Thanh tìm kiếm & lọc hạng thẻ */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-[#DDD5C5]">
+              <div className="relative w-full sm:w-80">
+                <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={memberSearch}
+                  onChange={(e) => setMemberSearch(e.target.value)}
+                  placeholder="Tìm theo tên hoặc số điện thoại..."
+                  className="w-full bg-[#FAF7F2] border border-[#DDD6C8] rounded-xl pl-9 pr-3.5 py-2 text-xs font-semibold text-[#322821] focus:outline-none focus:border-[#322821]"
+                />
+                {memberSearch && (
+                  <button onClick={() => setMemberSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Filter hạng thẻ */}
+              <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
+                {(['all', 'Kim Cương', 'Hạng Vàng', 'Hạng Bạc', 'Thành Viên'] as const).map((tierKey) => (
+                  <button
+                    key={tierKey}
+                    onClick={() => setMemberTierFilter(tierKey)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                      memberTierFilter === tierKey
+                        ? 'bg-[#322821] text-white shadow-xs'
+                        : 'bg-[#FAF7F2] hover:bg-[#EAE3D2] text-[#637269] border border-[#DDD6C8]'
+                    }`}
+                  >
+                    {tierKey === 'all' ? 'Tất Cả Hạng' : tierKey}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Danh sách Khách Hàng */}
+            <div className="bg-white rounded-3xl border border-[#DDD5C5] overflow-hidden shadow-xs">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-[#FAF7F2] border-b border-[#DDD5C5] text-[11px] font-bold text-[#6D7B73] uppercase tracking-wider">
+                      <th className="p-3.5 pl-5">Khách Hàng</th>
+                      <th className="p-3.5">Hạng Thẻ</th>
+                      <th className="p-3.5">Điểm Tích Lũy</th>
+                      <th className="p-3.5">Tổng Tiêu</th>
+                      <th className="p-3.5">Ngày Tham Gia</th>
+                      <th className="p-3.5 text-right pr-5">Thao Tác</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#F0EAE0] text-xs">
+                    {filteredMembersList.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="text-center py-10 text-stone-400 font-semibold">
+                          Không tìm thấy khách hàng nào phù hợp!
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredMembersList.map((m) => (
+                        <tr key={m.phone} className="hover:bg-[#FAF7F2] transition-colors">
+                          <td className="p-3.5 pl-5">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-9 h-9 rounded-full bg-[#F5EFE9] text-[#322821] font-bold flex items-center justify-center text-sm shadow-inner shrink-0">
+                                {m.name.charAt(0).toUpperCase()}
+                              </div>
+                              <div>
+                                <div className="font-bold text-[#322821]">{m.name}</div>
+                                <div className="text-[11px] font-mono text-[#7A8780]">{m.phone}</div>
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="p-3.5">
+                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
+                              m.tier === 'Kim Cương'
+                                ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                                : m.tier === 'Hạng Vàng'
+                                ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                : m.tier === 'Hạng Bạc'
+                                ? 'bg-slate-100 text-slate-700 border border-slate-200'
+                                : 'bg-teal-50 text-teal-800 border border-teal-200'
+                            }`}>
+                              {m.tier}
+                            </span>
+                          </td>
+
+                          <td className="p-3.5">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-extrabold text-sm text-[#D95829] font-mono">{m.points}đ</span>
+                              <button
+                                onClick={() => {
+                                  setAdjustPointsModalMember(m);
+                                  setAdjustPointsInput(50);
+                                }}
+                                className="px-1.5 py-0.5 text-[10px] font-bold bg-[#FAF7F2] hover:bg-amber-100 text-amber-800 border border-[#DDD6C8] rounded-md transition-colors"
+                                title="Cộng / trừ điểm cho khách"
+                              >
+                                +/- điểm
+                              </button>
+                            </div>
+                          </td>
+
+                          <td className="p-3.5 font-sans font-bold text-stone-700">
+                            {formatVND(m.totalSpent || 0)}
+                          </td>
+
+                          <td className="p-3.5 text-[#7A8780]">
+                            {m.registeredAt || 'Mới tham gia'}
+                          </td>
+
+                          <td className="p-3.5 text-right pr-5">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => {
+                                  setEditingMember(m);
+                                  setIsMemberModalOpen(true);
+                                  playClickSound(true);
+                                }}
+                                className="p-1.5 rounded-lg bg-[#FAF7F2] hover:bg-[#EAE3D2] border border-[#DDD6C8] text-[#322821] text-xs font-bold transition-colors"
+                                title="Chỉnh sửa thông tin khách"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+
+                              <button
+                                onClick={() => {
+                                  if (window.confirm(`Bạn có chắc chắn muốn xóa khách hàng "${m.name}" (${m.phone})? Dữ liệu điểm thưởng sẽ bị xóa vĩnh viễn trên Firebase.`)) {
+                                    deleteMember(m.phone);
+                                    playClickSound(true);
+                                  }
+                                }}
+                                className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 text-xs font-bold transition-colors"
+                                title="Xóa khách hàng"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ======================================================== */}
+        {/* TAB 9: QUẢN LÝ MÃ GIẢM GIÁ & VOUCHER                     */}
+        {/* ======================================================== */}
+        {activeTab === 'coupons' && (
+          <div className="space-y-6">
+            {/* Header và nút thêm mới */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-3xl border border-[#DDD5C5] shadow-xs">
+              <div>
+                <h3 className="font-display font-bold text-xl text-[#322821] flex items-center gap-2">
+                  <Tag className="w-5 h-5 text-rose-500" />
+                  <span>Quản Lý Mã Giảm Giá & Voucher Khuyến Mãi</span>
+                </h3>
+                <p className="text-xs text-[#6B7870] mt-0.5">
+                  Tạo voucher giảm giá theo số tiền cố định hoặc phần trăm cho khách hàng
+                </p>
+              </div>
+
+              <button
+                onClick={() => {
+                  setEditingCoupon(null);
+                  setIsCouponModalOpen(true);
+                  playClickSound(true);
+                }}
+                className="px-4 py-2.5 rounded-xl bg-[#322821] hover:bg-[#211A15] text-white text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-md transition-all self-start sm:self-auto"
+              >
+                <Plus className="w-4 h-4 text-emerald-300" />
+                <span>Tạo Mã Giảm Giá Mới</span>
+              </button>
+            </div>
+
+            {/* Thống kê nhanh */}
+            <div className="grid grid-cols-3 gap-3.5">
+              <div className="bg-white p-4 rounded-2xl border border-[#DDD5C5] shadow-xs">
+                <div className="text-[11px] font-bold text-[#7A8780] uppercase tracking-wider">Tổng Voucher</div>
+                <div className="text-2xl font-black text-[#322821] mt-1">{coupons.length}</div>
+                <div className="text-[10px] text-stone-500 mt-0.5">Mã đã tạo trên hệ thống</div>
+              </div>
+
+              <div className="bg-white p-4 rounded-2xl border border-[#DDD5C5] shadow-xs">
+                <div className="text-[11px] font-bold text-[#7A8780] uppercase tracking-wider">Đang Hoạt Động</div>
+                <div className="text-2xl font-black text-emerald-600 mt-1">
+                  {coupons.filter(c => c.isActive).length}
+                </div>
+                <div className="text-[10px] text-emerald-700 mt-0.5">Khách có thể áp dụng</div>
+              </div>
+
+              <div className="bg-white p-4 rounded-2xl border border-[#DDD5C5] shadow-xs">
+                <div className="text-[11px] font-bold text-[#7A8780] uppercase tracking-wider">Lượt Đã Dùng</div>
+                <div className="text-2xl font-black text-[#D95829] mt-1">
+                  {coupons.reduce((s, c) => s + (c.usageCount || 0), 0)}
+                </div>
+                <div className="text-[10px] text-amber-700 mt-0.5">Lượt áp dụng thành công</div>
+              </div>
+            </div>
+
+            {/* Thanh tìm kiếm */}
+            <div className="bg-white p-3.5 rounded-2xl border border-[#DDD5C5] flex items-center justify-between">
+              <div className="relative w-full sm:w-80">
+                <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={couponSearch}
+                  onChange={(e) => setCouponSearch(e.target.value)}
+                  placeholder="Tìm theo mã hoặc mô tả voucher..."
+                  className="w-full bg-[#FAF7F2] border border-[#DDD6C8] rounded-xl pl-9 pr-3.5 py-2 text-xs font-semibold text-[#322821] focus:outline-none focus:border-[#322821]"
+                />
+                {couponSearch && (
+                  <button onClick={() => setCouponSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Lưới danh sách voucher */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredCouponsList.length === 0 ? (
+                <div className="col-span-full bg-white p-12 rounded-3xl border border-[#DDD5C5] text-center text-stone-400 font-semibold">
+                  Chưa có mã giảm giá nào. Hãy bấm "Tạo Mã Giảm Giá Mới" ở trên!
+                </div>
+              ) : (
+                filteredCouponsList.map((c) => (
+                  <div
+                    key={c.id}
+                    className={`bg-white rounded-3xl border p-5 shadow-xs relative overflow-hidden flex flex-col justify-between transition-all ${
+                      c.isActive ? 'border-[#D95829]/30 hover:border-[#D95829]' : 'border-stone-200 opacity-60'
+                    }`}
+                  >
+                    <div>
+                      {/* Huy hiệu loại giảm giá */}
+                      <div className="flex items-center justify-between gap-2 mb-3">
+                        <span className={`px-2.5 py-1 rounded-xl text-[10px] font-extrabold uppercase tracking-wider ${
+                          c.type === 'percent'
+                            ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                            : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                        }`}>
+                          {c.type === 'percent' ? 'Giảm Theo %' : 'Giảm Tiền Mặt'}
+                        </span>
+
+                        {/* Toggle bật/tắt */}
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] font-bold text-stone-500">
+                            {c.isActive ? 'Bật' : 'Tắt'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => toggleCouponActive(c.id)}
+                            className={`w-9 h-5 rounded-full transition-colors relative p-0.5 ${
+                              c.isActive ? 'bg-emerald-600' : 'bg-stone-300'
+                            }`}
+                          >
+                            <div className={`w-4 h-4 rounded-full bg-white transition-transform ${
+                              c.isActive ? 'translate-x-4' : 'translate-x-0'
+                            }`} />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Mã voucher nổi bật */}
+                      <div className="bg-[#FAF7F2] p-3 rounded-2xl border border-dashed border-[#DDD6C8] mb-3 text-center">
+                        <div className="font-mono font-black text-xl text-[#D95829] tracking-widest">
+                          {c.code}
+                        </div>
+                        <div className="text-xs font-bold text-[#322821] mt-1">
+                          {c.type === 'fixed'
+                            ? `Giảm ${formatVND(c.value)}`
+                            : `Giảm ${c.value}% (Tối đa ${formatVND(c.maxDiscount || 0)})`}
+                        </div>
+                      </div>
+
+                      {/* Điều kiện */}
+                      <p className="text-xs text-stone-600 leading-relaxed mb-3">
+                        {c.description}
+                      </p>
+
+                      <div className="text-[11px] text-stone-500 space-y-1 mb-4 pt-2 border-t border-stone-100">
+                        <div>Đơn tối thiểu: <strong>{formatVND(c.minOrderTotal)}</strong></div>
+                        <div>Đã sử dụng: <strong>{c.usageCount || 0} lượt</strong></div>
+                      </div>
+                    </div>
+
+                    {/* Nút sửa / xóa */}
+                    <div className="pt-3 border-t border-[#F0EAE0] flex items-center justify-between gap-2">
+                      <span className="text-[10px] text-stone-400">Tạo ngày {c.createdAt}</span>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => {
+                            setEditingCoupon(c);
+                            setIsCouponModalOpen(true);
+                            playClickSound(true);
+                          }}
+                          className="px-2.5 py-1.5 rounded-xl bg-[#FAF7F2] hover:bg-[#EAE3D2] border border-[#DDD6C8] text-xs font-bold text-[#322821] flex items-center gap-1"
+                        >
+                          <Edit3 className="w-3.5 h-3.5 text-[#D95829]" />
+                          <span>Sửa</span>
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            if (window.confirm(`Xóa vĩnh viễn mã giảm giá "${c.code}"?`)) {
+                              deleteCoupon(c.id);
+                              playClickSound(true);
+                            }
+                          }}
+                          className="p-1.5 rounded-xl bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 text-xs font-bold"
+                          title="Xóa voucher"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
       </main>
 
       {/* POPUP THU TIỀN MẶT QUẦY */}
@@ -3411,6 +3976,123 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           }
         }}
       />
+
+      {/* MODAL THÊM / SỬA KHÁCH HÀNG THÀNH VIÊN */}
+      <MemberFormModal
+        isOpen={isMemberModalOpen}
+        onClose={() => {
+          setIsMemberModalOpen(false);
+          setEditingMember(null);
+        }}
+        initialMember={editingMember}
+        onSave={(savedMember) => {
+          if (editingMember) {
+            updateMember(savedMember.phone, savedMember);
+          } else {
+            addMember(savedMember);
+          }
+        }}
+      />
+
+      {/* MODAL THÊM / SỬA MÃ GIẢM GIÁ */}
+      <CouponFormModal
+        isOpen={isCouponModalOpen}
+        onClose={() => {
+          setIsCouponModalOpen(false);
+          setEditingCoupon(null);
+        }}
+        initialCoupon={editingCoupon}
+        onSave={(savedCoupon) => {
+          if (editingCoupon) {
+            updateCoupon(savedCoupon.id, savedCoupon);
+          } else {
+            addCoupon(savedCoupon);
+          }
+        }}
+      />
+
+      {/* MODAL ĐIỀU CHỈNH ĐIỂM THƯỞNG CHO KHÁCH HÀNG */}
+      {adjustPointsModalMember && (
+        <div className="fixed inset-0 z-[250] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+          <div className="fixed inset-0" onClick={() => setAdjustPointsModalMember(null)} />
+          <div className="relative w-full max-w-sm bg-white rounded-3xl p-6 shadow-2xl z-10 border border-[#DDD5C5]">
+            <h3 className="font-display font-bold text-lg text-[#322821] mb-1 text-center">
+              Cộng / Trừ Điểm Thưởng
+            </h3>
+            <p className="text-xs text-[#7A8780] text-center mb-4">
+              Khách hàng: <strong className="text-[#322821]">{adjustPointsModalMember.name}</strong> ({adjustPointsModalMember.phone})
+            </p>
+
+            <div className="bg-[#FAF7F2] p-3 rounded-2xl border border-[#DDD6C8] mb-4 text-center">
+              <span className="text-xs text-stone-500">Điểm hiện tại:</span>
+              <div className="text-2xl font-black text-[#D95829] font-mono mt-0.5">
+                {adjustPointsModalMember.points} điểm
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-xs font-bold text-[#35423A] mb-1.5">
+                Số Điểm Cần Thay Đổi:
+              </label>
+              <input
+                type="number"
+                min={1}
+                value={adjustPointsInput}
+                onChange={(e) => setAdjustPointsInput(Number(e.target.value) || 0)}
+                className="w-full bg-[#FAF7F2] border border-[#DDD6C8] rounded-xl px-3.5 py-2.5 text-center font-bold text-lg text-[#322821] focus:outline-none focus:border-[#322821]"
+              />
+              <div className="flex gap-1.5 mt-2">
+                {[10, 20, 50, 100].map((pts) => (
+                  <button
+                    key={pts}
+                    type="button"
+                    onClick={() => setAdjustPointsInput(pts)}
+                    className="flex-1 py-1 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold transition-colors"
+                  >
+                    +{pts}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <button
+                type="button"
+                onClick={() => {
+                  adjustMemberPoints(adjustPointsModalMember.phone, adjustPointsInput);
+                  playSuccessSound(true);
+                  setAdjustPointsModalMember(null);
+                }}
+                className="py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1 shadow-xs"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Cộng +{adjustPointsInput}đ</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  adjustMemberPoints(adjustPointsModalMember.phone, -adjustPointsInput);
+                  playClickSound(true);
+                  setAdjustPointsModalMember(null);
+                }}
+                className="py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center justify-center gap-1 shadow-xs"
+              >
+                <Minus className="w-3.5 h-3.5" />
+                <span>Trừ -{adjustPointsInput}đ</span>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setAdjustPointsModalMember(null)}
+              className="w-full py-2 rounded-xl border border-[#DDD6C8] text-xs font-bold text-stone-600 hover:bg-stone-50"
+            >
+              Đóng
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* MODAL CHUYỂN ĐỔI NHÂN VIÊN TRỰC QUẦY */}
       {isStaffSwitcherOpen && (

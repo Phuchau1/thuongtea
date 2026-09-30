@@ -51,6 +51,18 @@ export const STAFF_PERMISSIONS: StaffPermission[] = [
     allowedRoles: ['admin', 'cashier', 'barista'],
   },
   {
+    id: 'customer_management',
+    name: 'Quản Lý Khách Hàng & Điểm Tích Lũy',
+    description: 'Xem danh sách khách hàng, tạo mới/sửa/xóa khách, cộng/trừ điểm thưởng',
+    allowedRoles: ['admin', 'cashier'],
+  },
+  {
+    id: 'coupon_management',
+    name: 'Quản Lý Mã Giảm Giá & Voucher',
+    description: 'Tạo mã voucher theo % hoặc tiền mặt, thiết lập đơn tối thiểu, bật/tắt khuyến mãi',
+    allowedRoles: ['admin'],
+  },
+  {
     id: 'table_qr_print',
     name: 'Quản Lý & In Mã QR Bàn',
     description: 'Tạo và in tem mica QR đặt bàn cho khách tự gọi món',

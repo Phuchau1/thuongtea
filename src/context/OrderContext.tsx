@@ -6,6 +6,8 @@ import type { FruitTeaItem, Topping, DiningTable } from '../types/tea';
 import { FRUIT_TEAS, TOPPINGS, INITIAL_TABLES } from '../data/teas';
 import type { StaffMember, AttendanceRecord } from '../types/staff';
 import { INITIAL_STAFF, INITIAL_ATTENDANCE } from '../types/staff';
+import type { Coupon } from '../types/coupon';
+import { INITIAL_COUPONS } from '../types/coupon';
 import { 
   apiGetOrders, 
   apiCreateOrder, 
@@ -29,7 +31,9 @@ import {
   apiDeleteOrder,
   apiGetStock,
   apiSaveStock,
-  apiDeleteMember
+  apiDeleteMember,
+  apiGetCoupons,
+  apiSaveCoupons
 } from '../api';
 
 interface OrderContextType {
@@ -78,7 +82,18 @@ interface OrderContextType {
   logoutMember: () => void;
   addPointsToMember: (phone: string, points: number, spentAmount: number) => void;
   deductPointsFromMember: (phone: string, points: number) => boolean;
+  addMember: (member: MemberUser) => void;
+  updateMember: (phone: string, updated: Partial<MemberUser>) => void;
+  adjustMemberPoints: (phone: string, pointsDelta: number) => void;
   deleteMember: (phone: string) => void;
+
+  // Quản lý Mã Giảm Giá & Voucher
+  coupons: Coupon[];
+  addCoupon: (coupon: Coupon) => void;
+  updateCoupon: (id: string, updated: Partial<Coupon>) => void;
+  deleteCoupon: (id: string) => void;
+  toggleCouponActive: (id: string) => void;
+  validateCoupon: (code: string, orderTotal: number) => { valid: boolean; discount: number; message: string; coupon?: Coupon };
 
   // Quản lý Nhân Viên & Phân Quyền
   staffMembers: StaffMember[];
@@ -368,6 +383,16 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   });
 
+  // 5. Quản lý Mã Giảm Giá & Voucher
+  const [coupons, setCoupons] = useState<Coupon[]>(() => {
+    try {
+      const saved = localStorage.getItem('AN_TRA_COUPONS');
+      return saved ? JSON.parse(saved) : INITIAL_COUPONS;
+    } catch {
+      return INITIAL_COUPONS;
+    }
+  });
+
   const isInitialFirestoreLoadedRef = useRef(false);
 
   // Tự động tải dữ liệu từ Firestore khi khởi động (bảo đảm không bị ghi đè dữ liệu cũ)
@@ -380,8 +405,9 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       apiGetTables(),
       apiGetStaff(),
       apiGetAttendance(),
-      apiGetStock()
-    ]).then(([ordersRes, membersRes, prodsRes, topsRes, tabsRes, staffRes, attRes, stockRes]) => {
+      apiGetStock(),
+      apiGetCoupons()
+    ]).then(([ordersRes, membersRes, prodsRes, topsRes, tabsRes, staffRes, attRes, stockRes, couponsRes]) => {
       if (ordersRes.status === 'fulfilled' && ordersRes.value && ordersRes.value.length > 0) {
         setOrders(ordersRes.value);
       }
@@ -410,6 +436,9 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
       if (stockRes.status === 'fulfilled' && stockRes.value && Object.keys(stockRes.value).length > 0) {
         setStockStatus(stockRes.value);
+      }
+      if (couponsRes.status === 'fulfilled' && couponsRes.value && couponsRes.value.length > 0) {
+        setCoupons(couponsRes.value);
       }
       // Đánh dấu đã tải xong toàn bộ dữ liệu từ Firestore
       isInitialFirestoreLoadedRef.current = true;
@@ -539,6 +568,17 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [scannedTable]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem('AN_TRA_COUPONS', JSON.stringify(coupons));
+      if (isInitialFirestoreLoadedRef.current) {
+        apiSaveCoupons(coupons);
+      }
+    } catch (e) {
+      console.warn('Could not save coupons', e);
+    }
+  }, [coupons]);
+
   // BroadcastChannel & Storage Event để đồng bộ Realtime đa tab
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -554,6 +594,8 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         try { setToppings(JSON.parse(e.newValue)); } catch {}
       } else if (e.key === 'AN_TRA_TABLES' && e.newValue) {
         try { setTables(JSON.parse(e.newValue)); } catch {}
+      } else if (e.key === 'AN_TRA_COUPONS' && e.newValue) {
+        try { setCoupons(JSON.parse(e.newValue)); } catch {}
       } else if (e.key === 'AN_TRA_STAFF' && e.newValue) {
         try {
           const list = JSON.parse(e.newValue);
@@ -606,6 +648,11 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           setToppings(payload);
         } else if (type === 'UPDATE_TABLES') {
           setTables(payload);
+        } else if (type === 'UPDATE_COUPONS') {
+          setCoupons(payload);
+          try {
+            localStorage.setItem('AN_TRA_COUPONS', JSON.stringify(payload));
+          } catch {}
         } else if (type === 'UPDATE_STAFF') {
           const list = payload as StaffMember[];
           setStaffMembers(list);
@@ -853,6 +900,72 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return true;
   };
 
+  const addMember = (newMember: MemberUser) => {
+    const cleanPhone = newMember.phone.replace(/\s+/g, '');
+    const formatted: MemberUser = {
+      ...newMember,
+      id: newMember.id || `user-${Date.now()}`,
+      phone: cleanPhone,
+      registeredAt: newMember.registeredAt || new Date().toLocaleDateString('vi-VN'),
+    };
+    setMembers((prev) => {
+      const updated = [formatted, ...prev.filter((m) => m.phone.replace(/\s+/g, '') !== cleanPhone)];
+      try { localStorage.setItem('AN_TRA_MEMBERS', JSON.stringify(updated)); } catch {}
+      broadcast('UPDATE_MEMBERS', updated);
+      apiSaveMember(formatted);
+      return updated;
+    });
+  };
+
+  const updateMember = (phone: string, updated: Partial<MemberUser>) => {
+    const cleanPhone = phone.replace(/\s+/g, '');
+    setMembers((prev) => {
+      let target: MemberUser | null = null;
+      const updatedList = prev.map((m) => {
+        if (m.phone.replace(/\s+/g, '') === cleanPhone) {
+          const res = { ...m, ...updated };
+          target = res;
+          if (currentUser && currentUser.phone.replace(/\s+/g, '') === cleanPhone) {
+            setCurrentUser(res);
+          }
+          return res;
+        }
+        return m;
+      });
+      try { localStorage.setItem('AN_TRA_MEMBERS', JSON.stringify(updatedList)); } catch {}
+      broadcast('UPDATE_MEMBERS', updatedList);
+      if (target) {
+        apiSaveMember(target);
+      }
+      return updatedList;
+    });
+  };
+
+  const adjustMemberPoints = (phone: string, pointsDelta: number) => {
+    const cleanPhone = phone.replace(/\s+/g, '');
+    setMembers((prev) => {
+      let target: MemberUser | null = null;
+      const updatedList = prev.map((m) => {
+        if (m.phone.replace(/\s+/g, '') === cleanPhone) {
+          const newPts = Math.max(0, m.points + pointsDelta);
+          const res = { ...m, points: newPts };
+          target = res;
+          if (currentUser && currentUser.phone.replace(/\s+/g, '') === cleanPhone) {
+            setCurrentUser(res);
+          }
+          return res;
+        }
+        return m;
+      });
+      try { localStorage.setItem('AN_TRA_MEMBERS', JSON.stringify(updatedList)); } catch {}
+      broadcast('UPDATE_MEMBERS', updatedList);
+      if (target) {
+        apiSaveMember(target);
+      }
+      return updatedList;
+    });
+  };
+
   const deleteMember = (phone: string) => {
     const cleanPhone = phone.replace(/\s+/g, '');
     setMembers((prev) => {
@@ -862,6 +975,82 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return updated;
     });
     apiDeleteMember(cleanPhone);
+  };
+
+  // ==========================================
+  // QUẢN LÝ MÃ GIẢM GIÁ & VOUCHER
+  // ==========================================
+  const addCoupon = (newCoupon: Coupon) => {
+    setCoupons((prev) => {
+      const updated = [newCoupon, ...prev.filter((c) => c.id !== newCoupon.id)];
+      try { localStorage.setItem('AN_TRA_COUPONS', JSON.stringify(updated)); } catch {}
+      broadcast('UPDATE_COUPONS', updated);
+      apiSaveCoupons(updated);
+      return updated;
+    });
+  };
+
+  const updateCoupon = (id: string, updated: Partial<Coupon>) => {
+    setCoupons((prev) => {
+      const updatedList = prev.map((c) => (c.id === id ? { ...c, ...updated } : c));
+      try { localStorage.setItem('AN_TRA_COUPONS', JSON.stringify(updatedList)); } catch {}
+      broadcast('UPDATE_COUPONS', updatedList);
+      apiSaveCoupons(updatedList);
+      return updatedList;
+    });
+  };
+
+  const deleteCoupon = (id: string) => {
+    setCoupons((prev) => {
+      const updatedList = prev.filter((c) => c.id !== id);
+      try { localStorage.setItem('AN_TRA_COUPONS', JSON.stringify(updatedList)); } catch {}
+      broadcast('UPDATE_COUPONS', updatedList);
+      apiSaveCoupons(updatedList);
+      return updatedList;
+    });
+  };
+
+  const toggleCouponActive = (id: string) => {
+    setCoupons((prev) => {
+      const updatedList = prev.map((c) => (c.id === id ? { ...c, isActive: !c.isActive } : c));
+      try { localStorage.setItem('AN_TRA_COUPONS', JSON.stringify(updatedList)); } catch {}
+      broadcast('UPDATE_COUPONS', updatedList);
+      apiSaveCoupons(updatedList);
+      return updatedList;
+    });
+  };
+
+  const validateCoupon = (code: string, orderTotal: number): { valid: boolean; discount: number; message: string; coupon?: Coupon } => {
+    const cleanCode = code.trim().toUpperCase();
+    const found = coupons.find((c) => c.code.trim().toUpperCase() === cleanCode);
+    if (!found) {
+      return { valid: false, discount: 0, message: 'Mã giảm giá không tồn tại hoặc đã hết hạn.' };
+    }
+    if (!found.isActive) {
+      return { valid: false, discount: 0, message: 'Mã giảm giá này hiện đang tạm dừng áp dụng.' };
+    }
+    if (orderTotal < found.minOrderTotal) {
+      return {
+        valid: false,
+        discount: 0,
+        message: `Đơn hàng tối thiểu phải từ ${new Intl.NumberFormat('vi-VN').format(found.minOrderTotal)}đ để áp dụng mã này.`
+      };
+    }
+    let calculated = 0;
+    if (found.type === 'fixed') {
+      calculated = Math.min(orderTotal, found.value);
+    } else {
+      calculated = Math.round((orderTotal * found.value) / 100);
+      if (found.maxDiscount && calculated > found.maxDiscount) {
+        calculated = found.maxDiscount;
+      }
+    }
+    return {
+      valid: true,
+      discount: calculated,
+      message: `Áp dụng mã ${found.code} thành công: Giảm ${new Intl.NumberFormat('vi-VN').format(calculated)}đ!`,
+      coupon: found,
+    };
   };
 
   // ==========================================
@@ -1307,14 +1496,25 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         deleteTable,
         resetTablesToDefault,
 
-        // Thành viên
+        // Thành viên & Khách hàng
         currentUser,
         members,
         loginMember,
         logoutMember,
         addPointsToMember,
         deductPointsFromMember,
+        addMember,
+        updateMember,
+        adjustMemberPoints,
         deleteMember,
+
+        // Quản lý Mã Giảm Giá & Voucher
+        coupons,
+        addCoupon,
+        updateCoupon,
+        deleteCoupon,
+        toggleCouponActive,
+        validateCoupon,
 
         // Nhân viên & Phân quyền
         staffMembers,

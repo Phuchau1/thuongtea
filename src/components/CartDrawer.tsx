@@ -49,7 +49,8 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
     members, 
     deductPointsFromMember, 
     getTableStatus, 
-    allTablesList 
+    allTablesList,
+    validateCoupon
   } = useOrders();
 
   const [step, setStep] = useState<'cart' | 'checkout' | 'success'>(initialStep);
@@ -163,16 +164,19 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
 
   const handleApplyPromo = () => {
     const code = promoCode.trim().toUpperCase();
-    if (code === 'FRESH20') {
-      setDiscount(20000);
-      setPromoApplied('FRESH20 (Giảm 20.000đ)');
-      setPromoMessage('Áp dụng mã FRESH20 thành công: Giảm 20.000đ!');
-    } else if (code === 'FREESHIP') {
-      setDiscount(0);
-      setPromoApplied('FREESHIP (Miễn phí vận chuyển)');
-      setPromoMessage('Áp dụng mã FREESHIP thành công: Miễn phí vận chuyển!');
+    if (!code) {
+      setPromoMessage('Vui lòng nhập mã giảm giá.');
+      return;
+    }
+    const result = validateCoupon(code, subtotal);
+    if (result.valid && result.coupon) {
+      setDiscount(result.discount);
+      setPromoApplied(`${result.coupon.code} (${result.coupon.type === 'percent' ? `Giảm ${result.coupon.value}%` : `Giảm ${formatVND(result.discount)}`})`);
+      setPromoMessage(result.message);
     } else {
-      setPromoMessage('Mã không hợp lệ. Hãy thử: FRESH20 hoặc FREESHIP');
+      setDiscount(0);
+      setPromoApplied(null);
+      setPromoMessage(result.message);
     }
   };
 
