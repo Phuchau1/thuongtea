@@ -1,7 +1,13 @@
 import { MongoClient, ServerApiVersion } from 'mongodb';
 import dotenv from 'dotenv';
-import path from 'node:path';
-import fs from 'node:fs';
+import {
+  INITIAL_ORDERS,
+  INITIAL_MEMBERS,
+  INITIAL_STAFF,
+  INITIAL_TABLES,
+  INITIAL_TOPPINGS,
+  INITIAL_COUPONS
+} from './initialData.js';
 
 dotenv.config();
 
@@ -12,46 +18,87 @@ let client = null;
 let dbInstance = null;
 let isConnecting = false;
 
-// Local fallback file path if MongoDB URI is not yet configured or during initial setup
-const localDataDir = path.resolve(process.cwd(), 'data');
-const localDbFile = path.resolve(localDataDir, 'db.json');
-
-function getLocalData() {
+// Tự động kiểm tra và di chuyển toàn bộ dữ liệu mẫu/localhost lên MongoDB Atlas nếu chưa có
+export async function autoMigrateToMongo(db) {
   try {
-    if (!fs.existsSync(localDataDir)) {
-      fs.mkdirSync(localDataDir, { recursive: true });
-    }
-    if (!fs.existsSync(localDbFile)) {
-      const initial = {
-        orders: [],
-        members: [],
-        products: [],
-        toppings: [],
-        tables: [],
-        staff: [],
-        attendance: [],
-        coupons: [],
-        stock: {}
-      };
-      fs.writeFileSync(localDbFile, JSON.stringify(initial, null, 2), 'utf-8');
-      return initial;
-    }
-    const raw = fs.readFileSync(localDbFile, 'utf-8');
-    return JSON.parse(raw);
-  } catch (err) {
-    console.error('[Fallback] Error reading local db.json:', err);
-    return { orders: [], members: [], products: [], toppings: [], tables: [], staff: [], attendance: [], coupons: [], stock: {} };
-  }
-}
+    console.log('[MongoDB Atlas] Checking & syncing data into Atlas...');
 
-function saveLocalData(data) {
-  try {
-    if (!fs.existsSync(localDataDir)) {
-      fs.mkdirSync(localDataDir, { recursive: true });
+    // 1. Đồng bộ Đơn Hàng (Orders)
+    const ordersCount = await db.collection('orders').countDocuments();
+    if (ordersCount === 0 && INITIAL_ORDERS.length > 0) {
+      console.log(`[MongoDB Atlas] Migrating ${INITIAL_ORDERS.length} initial orders...`);
+      for (const order of INITIAL_ORDERS) {
+        await db.collection('orders').updateOne(
+          { id: order.id },
+          { $set: order },
+          { upsert: true }
+        );
+      }
     }
-    fs.writeFileSync(localDbFile, JSON.stringify(data, null, 2), 'utf-8');
+
+    // 2. Đồng bộ Thành Viên (Members)
+    const membersCount = await db.collection('members').countDocuments();
+    if (membersCount === 0 && INITIAL_MEMBERS.length > 0) {
+      console.log(`[MongoDB Atlas] Migrating ${INITIAL_MEMBERS.length} initial members...`);
+      for (const mem of INITIAL_MEMBERS) {
+        const cleanPhone = (mem.phone || '').replace(/\D/g, '');
+        if (cleanPhone) {
+          await db.collection('members').updateOne(
+            { phone: cleanPhone },
+            { $set: { ...mem, id: cleanPhone, phone: cleanPhone } },
+            { upsert: true }
+          );
+        }
+      }
+    }
+
+    // 3. Đồng bộ Bàn ăn (Tables)
+    const tablesDoc = await db.collection('config').findOne({ key: 'tables' });
+    if (!tablesDoc || !tablesDoc.list || tablesDoc.list.length === 0) {
+      console.log('[MongoDB Atlas] Migrating 12 initial dining tables...');
+      await db.collection('config').updateOne(
+        { key: 'tables' },
+        { $set: { key: 'tables', list: INITIAL_TABLES, updatedAt: Date.now() } },
+        { upsert: true }
+      );
+    }
+
+    // 4. Đồng bộ Toppings
+    const toppingsDoc = await db.collection('config').findOne({ key: 'toppings' });
+    if (!toppingsDoc || !toppingsDoc.list || toppingsDoc.list.length === 0) {
+      console.log('[MongoDB Atlas] Migrating initial toppings...');
+      await db.collection('config').updateOne(
+        { key: 'toppings' },
+        { $set: { key: 'toppings', list: INITIAL_TOPPINGS, updatedAt: Date.now() } },
+        { upsert: true }
+      );
+    }
+
+    // 5. Đồng bộ Nhân viên (Staff)
+    const staffDoc = await db.collection('config').findOne({ key: 'staff' });
+    if (!staffDoc || !staffDoc.list || staffDoc.list.length === 0) {
+      console.log('[MongoDB Atlas] Migrating initial staff members...');
+      await db.collection('config').updateOne(
+        { key: 'staff' },
+        { $set: { key: 'staff', list: INITIAL_STAFF, updatedAt: Date.now() } },
+        { upsert: true }
+      );
+    }
+
+    // 6. Đồng bộ Mã giảm giá (Coupons)
+    const couponsDoc = await db.collection('config').findOne({ key: 'coupons' });
+    if (!couponsDoc || !couponsDoc.list || couponsDoc.list.length === 0) {
+      console.log('[MongoDB Atlas] Migrating initial coupons...');
+      await db.collection('config').updateOne(
+        { key: 'coupons' },
+        { $set: { key: 'coupons', list: INITIAL_COUPONS, updatedAt: Date.now() } },
+        { upsert: true }
+      );
+    }
+
+    console.log('[MongoDB Atlas] All collections verified and ready on Atlas!');
   } catch (err) {
-    console.error('[Fallback] Error saving local db.json:', err);
+    console.error('[MongoDB Atlas] Auto migration check warning:', err.message);
   }
 }
 
@@ -61,12 +108,11 @@ export async function connectToDatabase() {
   }
 
   if (!uri || uri.trim() === '') {
-    console.warn('[MongoDB Atlas] MONGODB_URI is not set. Operating in local-persistent mode (data/db.json).');
+    console.warn('[MongoDB Atlas] MONGODB_URI chưa được cấu hình trong biến môi trường.');
     return { db: null, isMongo: false };
   }
 
   if (isConnecting) {
-    // Wait momentarily for existing connection promise
     await new Promise((r) => setTimeout(r, 200));
     if (dbInstance) return { db: dbInstance, isMongo: true };
   }
@@ -80,14 +126,14 @@ export async function connectToDatabase() {
         strict: false,
         deprecationErrors: true,
       },
-      connectTimeoutMS: 10000,
+      connectTimeoutMS: 15000,
       socketTimeoutMS: 45000,
       maxPoolSize: 20,
     });
 
     await client.connect();
     dbInstance = client.db(dbName);
-    console.log(`[MongoDB Atlas] Successfully connected to database: "${dbName}"!`);
+    console.log(`[MongoDB Atlas] ✅ Successfully connected to database: "${dbName}"!`);
 
     // Ensure unique indexes for fast lookups
     try {
@@ -100,16 +146,18 @@ export async function connectToDatabase() {
       console.debug('[MongoDB Atlas] Indexes check/creation:', idxErr.message);
     }
 
+    // Tự động chuyển toàn bộ dữ liệu mẫu lên MongoDB Atlas
+    await autoMigrateToMongo(dbInstance);
+
     isConnecting = false;
     return { db: dbInstance, isMongo: true };
   } catch (err) {
     isConnecting = false;
     console.error('[MongoDB Atlas] Connection failed:', err.message);
-    console.warn('[MongoDB Atlas] Falling back to local data storage to ensure uninterrupted service.');
     return { db: null, isMongo: false };
   }
 }
 
 export function getDatabase() {
-  return { db: dbInstance, isMongo: !!dbInstance, getLocalData, saveLocalData };
+  return { db: dbInstance, isMongo: !!dbInstance };
 }

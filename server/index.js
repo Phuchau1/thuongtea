@@ -3,7 +3,7 @@ import cors from 'cors';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
-import { connectToDatabase, getDatabase } from './db.js';
+import { connectToDatabase, getDatabase, autoMigrateToMongo } from './db.js';
 
 dotenv.config();
 
@@ -32,16 +32,29 @@ function broadcastSse(event, data) {
 }
 
 // --------------------------------------------------------------------------
-// 1. HEALTH & STATUS
+// 1. HEALTH & MIGRATION TRIGGER
 // --------------------------------------------------------------------------
-app.get('/api/health', async (req, res) => {
+app.get('/api/health', (req, res) => {
   const { isMongo } = getDatabase();
   res.json({
     status: 'ok',
-    database: isMongo ? 'mongodb_atlas' : 'local_storage',
+    database: isMongo ? 'mongodb_atlas' : 'connecting',
     clientsCount: sseClients.size,
     timestamp: new Date().toISOString()
   });
+});
+
+app.post('/api/migrate-now', async (req, res) => {
+  try {
+    const { db, isMongo } = getDatabase();
+    if (!isMongo || !db) {
+      return res.status(503).json({ success: false, error: 'Chưa kết nối được với MongoDB Atlas' });
+    }
+    await autoMigrateToMongo(db);
+    res.json({ success: true, message: 'Đã hoàn tất đồng bộ toàn bộ dữ liệu vào MongoDB Atlas!' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // --------------------------------------------------------------------------
@@ -56,7 +69,7 @@ app.get('/api/orders/stream', (req, res) => {
   res.write(': connected\n\n');
   sseClients.add(res);
 
-  // Heartbeat every 20s to keep connection alive through proxies/Render
+  // Heartbeat every 20s to keep connection alive
   const interval = setInterval(() => {
     try {
       res.write(': ping\n\n');
@@ -73,20 +86,17 @@ app.get('/api/orders/stream', (req, res) => {
 });
 
 // --------------------------------------------------------------------------
-// 3. ORDERS API
+// 3. ORDERS API (MONGODB ATLAS EXCLUSIVE)
 // --------------------------------------------------------------------------
 // GET /api/orders
 app.get('/api/orders', async (req, res) => {
   try {
-    const { db, isMongo, getLocalData } = getDatabase();
-    if (isMongo) {
-      const orders = await db.collection('orders').find({}).sort({ createdTimestamp: -1 }).toArray();
-      // Clean up Mongo _id from output if needed
-      const sanitized = orders.map(({ _id, ...rest }) => rest);
-      return res.json({ success: true, data: sanitized });
-    }
-    const local = getLocalData();
-    res.json({ success: true, data: local.orders || [] });
+    const { db } = getDatabase();
+    if (!db) return res.json({ success: true, data: [] });
+
+    const orders = await db.collection('orders').find({}).sort({ createdTimestamp: -1 }).toArray();
+    const sanitized = orders.map(({ _id, ...rest }) => rest);
+    res.json({ success: true, data: sanitized });
   } catch (err) {
     console.error('Error fetching orders:', err);
     res.status(500).json({ success: false, error: err.message });
@@ -106,26 +116,15 @@ app.post('/api/orders', async (req, res) => {
       createdTimestamp: newOrder.createdTimestamp || Date.now()
     };
 
-    const { db, isMongo, getLocalData, saveLocalData } = getDatabase();
-    if (isMongo) {
+    const { db } = getDatabase();
+    if (db) {
       await db.collection('orders').updateOne(
         { id: orderData.id },
         { $set: orderData },
         { upsert: true }
       );
-    } else {
-      const local = getLocalData();
-      local.orders = local.orders || [];
-      const idx = local.orders.findIndex((o) => o.id === orderData.id);
-      if (idx >= 0) {
-        local.orders[idx] = { ...local.orders[idx], ...orderData };
-      } else {
-        local.orders.unshift(orderData);
-      }
-      saveLocalData(local);
     }
 
-    // Broadcast to all POS / kitchen screens in real time
     broadcastSse('NEW_ORDER', orderData);
     res.json({ success: true, data: orderData });
   } catch (err) {
@@ -141,26 +140,16 @@ app.post('/api/orders/check/:id', async (req, res) => {
     const checkedAt = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
     const updates = { checked: true, status: 'preparing', checkedAt };
 
-    const { db, isMongo, getLocalData, saveLocalData } = getDatabase();
+    const { db } = getDatabase();
     let updatedOrder = null;
 
-    if (isMongo) {
+    if (db) {
       await db.collection('orders').updateOne({ id: orderId }, { $set: updates });
       const doc = await db.collection('orders').findOne({ id: orderId });
       if (doc) {
         const { _id, ...rest } = doc;
         updatedOrder = rest;
       }
-    } else {
-      const local = getLocalData();
-      local.orders = (local.orders || []).map((o) => {
-        if (o.id === orderId) {
-          updatedOrder = { ...o, ...updates };
-          return updatedOrder;
-        }
-        return o;
-      });
-      saveLocalData(local);
     }
 
     broadcastSse('CHECK_ORDER', { orderId, checkedAt, order: updatedOrder });
@@ -177,26 +166,16 @@ app.put('/api/orders/:id', async (req, res) => {
     const orderId = req.params.id;
     const updates = req.body;
 
-    const { db, isMongo, getLocalData, saveLocalData } = getDatabase();
+    const { db } = getDatabase();
     let updatedOrder = null;
 
-    if (isMongo) {
+    if (db) {
       await db.collection('orders').updateOne({ id: orderId }, { $set: updates });
       const doc = await db.collection('orders').findOne({ id: orderId });
       if (doc) {
         const { _id, ...rest } = doc;
         updatedOrder = rest;
       }
-    } else {
-      const local = getLocalData();
-      local.orders = (local.orders || []).map((o) => {
-        if (o.id === orderId) {
-          updatedOrder = { ...o, ...updates };
-          return updatedOrder;
-        }
-        return o;
-      });
-      saveLocalData(local);
     }
 
     broadcastSse('UPDATE_ORDER', { orderId, updates, order: updatedOrder });
@@ -211,14 +190,10 @@ app.put('/api/orders/:id', async (req, res) => {
 app.delete('/api/orders/:id', async (req, res) => {
   try {
     const orderId = req.params.id;
-    const { db, isMongo, getLocalData, saveLocalData } = getDatabase();
+    const { db } = getDatabase();
 
-    if (isMongo) {
+    if (db) {
       await db.collection('orders').deleteOne({ id: orderId });
-    } else {
-      const local = getLocalData();
-      local.orders = (local.orders || []).filter((o) => o.id !== orderId);
-      saveLocalData(local);
     }
 
     broadcastSse('DELETE_ORDER', { orderId });
@@ -232,10 +207,10 @@ app.delete('/api/orders/:id', async (req, res) => {
 // POST /api/orders/clear-duplicates
 app.post('/api/orders/clear-duplicates', async (req, res) => {
   try {
-    const { db, isMongo, getLocalData, saveLocalData } = getDatabase();
+    const { db } = getDatabase();
     let uniqueOrders = [];
 
-    if (isMongo) {
+    if (db) {
       const all = await db.collection('orders').find({}).sort({ createdTimestamp: -1 }).toArray();
       const seen = new Set();
       const idsToDelete = [];
@@ -252,18 +227,6 @@ app.post('/api/orders/clear-duplicates', async (req, res) => {
       if (idsToDelete.length > 0) {
         await db.collection('orders').deleteMany({ _id: { $in: idsToDelete } });
       }
-    } else {
-      const local = getLocalData();
-      const seen = new Set();
-      for (const o of (local.orders || [])) {
-        const key = `${o.tableNumber || ''}-${o.customer?.phone || ''}-${o.total || 0}-${(o.items || []).map(i => i.cartItemId).join(',')}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          uniqueOrders.push(o);
-        }
-      }
-      local.orders = uniqueOrders;
-      saveLocalData(local);
     }
 
     broadcastSse('ORDERS_RESET', uniqueOrders);
@@ -283,9 +246,8 @@ app.post('/api/tables/clear', async (req, res) => {
     const { tableNumber } = req.body;
     const cleanTbl = (tableNumber || '').trim().toLowerCase();
 
-    const { db, isMongo, getLocalData, saveLocalData } = getDatabase();
-    if (isMongo) {
-      // Find orders matching tableNumber that are not yet cleared
+    const { db } = getDatabase();
+    if (db) {
       const allOrders = await db.collection('orders').find({
         tableCleared: { $ne: true },
         status: { $ne: 'cancelled' }
@@ -304,16 +266,6 @@ app.post('/api/tables/clear', async (req, res) => {
           { $set: { tableCleared: true, paymentStatus: 'paid' } }
         );
       }
-    } else {
-      const local = getLocalData();
-      local.orders = (local.orders || []).map(o => {
-        const t = (o.tableNumber || o.customer?.tableNumber || '').trim().toLowerCase();
-        if (t === cleanTbl && !o.tableCleared && o.status !== 'cancelled') {
-          return { ...o, tableCleared: true, paymentStatus: 'paid' };
-        }
-        return o;
-      });
-      saveLocalData(local);
     }
 
     broadcastSse('CLEAR_TABLE', { tableNumber });
@@ -327,21 +279,12 @@ app.post('/api/tables/clear', async (req, res) => {
 // POST /api/tables/clear-all
 app.post('/api/tables/clear-all', async (req, res) => {
   try {
-    const { db, isMongo, getLocalData, saveLocalData } = getDatabase();
-    if (isMongo) {
+    const { db } = getDatabase();
+    if (db) {
       await db.collection('orders').updateMany(
         { tableCleared: { $ne: true }, status: { $ne: 'cancelled' } },
         { $set: { tableCleared: true, paymentStatus: 'paid' } }
       );
-    } else {
-      const local = getLocalData();
-      local.orders = (local.orders || []).map(o => {
-        if ((o.tableNumber || o.customer?.tableNumber) && !o.tableCleared && o.status !== 'cancelled') {
-          return { ...o, tableCleared: true, paymentStatus: 'paid' };
-        }
-        return o;
-      });
-      saveLocalData(local);
     }
 
     broadcastSse('CLEAR_ALL_TABLES', {});
@@ -355,13 +298,11 @@ app.post('/api/tables/clear-all', async (req, res) => {
 // GET & POST /api/tables
 app.get('/api/tables', async (req, res) => {
   try {
-    const { db, isMongo, getLocalData } = getDatabase();
-    if (isMongo) {
-      const doc = await db.collection('config').findOne({ key: 'tables' });
-      return res.json({ success: true, data: doc?.list || [] });
-    }
-    const local = getLocalData();
-    res.json({ success: true, data: local.tables || [] });
+    const { db } = getDatabase();
+    if (!db) return res.json({ success: true, data: [] });
+
+    const doc = await db.collection('config').findOne({ key: 'tables' });
+    res.json({ success: true, data: doc?.list || [] });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -370,17 +311,13 @@ app.get('/api/tables', async (req, res) => {
 app.post('/api/tables', async (req, res) => {
   try {
     const { tables } = req.body;
-    const { db, isMongo, getLocalData, saveLocalData } = getDatabase();
-    if (isMongo) {
+    const { db } = getDatabase();
+    if (db) {
       await db.collection('config').updateOne(
         { key: 'tables' },
         { $set: { key: 'tables', list: tables, updatedAt: Date.now() } },
         { upsert: true }
       );
-    } else {
-      const local = getLocalData();
-      local.tables = tables;
-      saveLocalData(local);
     }
     res.json({ success: true, data: tables });
   } catch (err) {
@@ -394,13 +331,11 @@ app.post('/api/tables', async (req, res) => {
 // Products
 app.get('/api/products', async (req, res) => {
   try {
-    const { db, isMongo, getLocalData } = getDatabase();
-    if (isMongo) {
-      const doc = await db.collection('config').findOne({ key: 'products' });
-      return res.json({ success: true, data: doc?.list || [] });
-    }
-    const local = getLocalData();
-    res.json({ success: true, data: local.products || [] });
+    const { db } = getDatabase();
+    if (!db) return res.json({ success: true, data: [] });
+
+    const doc = await db.collection('config').findOne({ key: 'products' });
+    res.json({ success: true, data: doc?.list || [] });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -409,17 +344,13 @@ app.get('/api/products', async (req, res) => {
 app.post('/api/products', async (req, res) => {
   try {
     const { products } = req.body;
-    const { db, isMongo, getLocalData, saveLocalData } = getDatabase();
-    if (isMongo) {
+    const { db } = getDatabase();
+    if (db) {
       await db.collection('config').updateOne(
         { key: 'products' },
         { $set: { key: 'products', list: products, updatedAt: Date.now() } },
         { upsert: true }
       );
-    } else {
-      const local = getLocalData();
-      local.products = products;
-      saveLocalData(local);
     }
     res.json({ success: true, data: products });
   } catch (err) {
@@ -430,13 +361,11 @@ app.post('/api/products', async (req, res) => {
 // Toppings
 app.get('/api/toppings', async (req, res) => {
   try {
-    const { db, isMongo, getLocalData } = getDatabase();
-    if (isMongo) {
-      const doc = await db.collection('config').findOne({ key: 'toppings' });
-      return res.json({ success: true, data: doc?.list || [] });
-    }
-    const local = getLocalData();
-    res.json({ success: true, data: local.toppings || [] });
+    const { db } = getDatabase();
+    if (!db) return res.json({ success: true, data: [] });
+
+    const doc = await db.collection('config').findOne({ key: 'toppings' });
+    res.json({ success: true, data: doc?.list || [] });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -445,17 +374,13 @@ app.get('/api/toppings', async (req, res) => {
 app.post('/api/toppings', async (req, res) => {
   try {
     const { toppings } = req.body;
-    const { db, isMongo, getLocalData, saveLocalData } = getDatabase();
-    if (isMongo) {
+    const { db } = getDatabase();
+    if (db) {
       await db.collection('config').updateOne(
         { key: 'toppings' },
         { $set: { key: 'toppings', list: toppings, updatedAt: Date.now() } },
         { upsert: true }
       );
-    } else {
-      const local = getLocalData();
-      local.toppings = toppings;
-      saveLocalData(local);
     }
     res.json({ success: true, data: toppings });
   } catch (err) {
@@ -468,14 +393,12 @@ app.post('/api/toppings', async (req, res) => {
 // --------------------------------------------------------------------------
 app.get('/api/members', async (req, res) => {
   try {
-    const { db, isMongo, getLocalData } = getDatabase();
-    if (isMongo) {
-      const list = await db.collection('members').find({}).toArray();
-      const sanitized = list.map(({ _id, ...rest }) => rest);
-      return res.json({ success: true, data: sanitized });
-    }
-    const local = getLocalData();
-    res.json({ success: true, data: local.members || [] });
+    const { db } = getDatabase();
+    if (!db) return res.json({ success: true, data: [] });
+
+    const list = await db.collection('members').find({}).toArray();
+    const sanitized = list.map(({ _id, ...rest }) => rest);
+    res.json({ success: true, data: sanitized });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -496,23 +419,13 @@ app.post('/api/members', async (req, res) => {
       updatedAt: Date.now()
     };
 
-    const { db, isMongo, getLocalData, saveLocalData } = getDatabase();
-    if (isMongo) {
+    const { db } = getDatabase();
+    if (db) {
       await db.collection('members').updateOne(
         { phone: cleanPhone },
         { $set: standardized },
         { upsert: true }
       );
-    } else {
-      const local = getLocalData();
-      local.members = local.members || [];
-      const idx = local.members.findIndex(m => m.phone === cleanPhone);
-      if (idx >= 0) {
-        local.members[idx] = standardized;
-      } else {
-        local.members.push(standardized);
-      }
-      saveLocalData(local);
     }
 
     res.json({ success: true, data: standardized });
@@ -526,15 +439,11 @@ app.delete('/api/members/:id', async (req, res) => {
     const rawId = req.params.id;
     const cleanPhone = String(rawId).replace(/\D/g, '');
 
-    const { db, isMongo, getLocalData, saveLocalData } = getDatabase();
-    if (isMongo) {
+    const { db } = getDatabase();
+    if (db) {
       await db.collection('members').deleteMany({
         $or: [{ phone: cleanPhone }, { id: rawId }, { phone: rawId }]
       });
-    } else {
-      const local = getLocalData();
-      local.members = (local.members || []).filter(m => m.phone !== cleanPhone && m.id !== rawId);
-      saveLocalData(local);
     }
     res.json({ success: true, id: rawId });
   } catch (err) {
@@ -547,13 +456,11 @@ app.delete('/api/members/:id', async (req, res) => {
 // --------------------------------------------------------------------------
 app.get('/api/staff', async (req, res) => {
   try {
-    const { db, isMongo, getLocalData } = getDatabase();
-    if (isMongo) {
-      const doc = await db.collection('config').findOne({ key: 'staff' });
-      return res.json({ success: true, data: doc?.list || [] });
-    }
-    const local = getLocalData();
-    res.json({ success: true, data: local.staff || [] });
+    const { db } = getDatabase();
+    if (!db) return res.json({ success: true, data: [] });
+
+    const doc = await db.collection('config').findOne({ key: 'staff' });
+    res.json({ success: true, data: doc?.list || [] });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -562,17 +469,13 @@ app.get('/api/staff', async (req, res) => {
 app.post('/api/staff', async (req, res) => {
   try {
     const { staff } = req.body;
-    const { db, isMongo, getLocalData, saveLocalData } = getDatabase();
-    if (isMongo) {
+    const { db } = getDatabase();
+    if (db) {
       await db.collection('config').updateOne(
         { key: 'staff' },
         { $set: { key: 'staff', list: staff, updatedAt: Date.now() } },
         { upsert: true }
       );
-    } else {
-      const local = getLocalData();
-      local.staff = staff;
-      saveLocalData(local);
     }
     res.json({ success: true, data: staff });
   } catch (err) {
@@ -582,14 +485,12 @@ app.post('/api/staff', async (req, res) => {
 
 app.get('/api/attendance', async (req, res) => {
   try {
-    const { db, isMongo, getLocalData } = getDatabase();
-    if (isMongo) {
-      const records = await db.collection('attendance').find({}).sort({ timestamp: -1 }).toArray();
-      const sanitized = records.map(({ _id, ...rest }) => rest);
-      return res.json({ success: true, data: sanitized });
-    }
-    const local = getLocalData();
-    res.json({ success: true, data: local.attendance || [] });
+    const { db } = getDatabase();
+    if (!db) return res.json({ success: true, data: [] });
+
+    const records = await db.collection('attendance').find({}).sort({ timestamp: -1 }).toArray();
+    const sanitized = records.map(({ _id, ...rest }) => rest);
+    res.json({ success: true, data: sanitized });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -601,23 +502,13 @@ app.post('/api/attendance/record', async (req, res) => {
     const docId = record.id || `att-${Date.now()}`;
     const standardized = { ...record, id: docId };
 
-    const { db, isMongo, getLocalData, saveLocalData } = getDatabase();
-    if (isMongo) {
+    const { db } = getDatabase();
+    if (db) {
       await db.collection('attendance').updateOne(
         { id: docId },
         { $set: standardized },
         { upsert: true }
       );
-    } else {
-      const local = getLocalData();
-      local.attendance = local.attendance || [];
-      const idx = local.attendance.findIndex(a => a.id === docId);
-      if (idx >= 0) {
-        local.attendance[idx] = standardized;
-      } else {
-        local.attendance.unshift(standardized);
-      }
-      saveLocalData(local);
     }
     res.json({ success: true, data: standardized });
   } catch (err) {
@@ -630,13 +521,11 @@ app.post('/api/attendance/record', async (req, res) => {
 // --------------------------------------------------------------------------
 app.get('/api/coupons', async (req, res) => {
   try {
-    const { db, isMongo, getLocalData } = getDatabase();
-    if (isMongo) {
-      const doc = await db.collection('config').findOne({ key: 'coupons' });
-      return res.json({ success: true, data: doc?.list || [] });
-    }
-    const local = getLocalData();
-    res.json({ success: true, data: local.coupons || [] });
+    const { db } = getDatabase();
+    if (!db) return res.json({ success: true, data: [] });
+
+    const doc = await db.collection('config').findOne({ key: 'coupons' });
+    res.json({ success: true, data: doc?.list || [] });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -645,17 +534,13 @@ app.get('/api/coupons', async (req, res) => {
 app.post('/api/coupons', async (req, res) => {
   try {
     const { coupons } = req.body;
-    const { db, isMongo, getLocalData, saveLocalData } = getDatabase();
-    if (isMongo) {
+    const { db } = getDatabase();
+    if (db) {
       await db.collection('config').updateOne(
         { key: 'coupons' },
         { $set: { key: 'coupons', list: coupons, updatedAt: Date.now() } },
         { upsert: true }
       );
-    } else {
-      const local = getLocalData();
-      local.coupons = coupons;
-      saveLocalData(local);
     }
     res.json({ success: true, data: coupons });
   } catch (err) {
@@ -665,13 +550,11 @@ app.post('/api/coupons', async (req, res) => {
 
 app.get('/api/stock', async (req, res) => {
   try {
-    const { db, isMongo, getLocalData } = getDatabase();
-    if (isMongo) {
-      const doc = await db.collection('config').findOne({ key: 'stock' });
-      return res.json({ success: true, data: doc?.status || {} });
-    }
-    const local = getLocalData();
-    res.json({ success: true, data: local.stock || {} });
+    const { db } = getDatabase();
+    if (!db) return res.json({ success: true, data: {} });
+
+    const doc = await db.collection('config').findOne({ key: 'stock' });
+    res.json({ success: true, data: doc?.status || {} });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -680,17 +563,13 @@ app.get('/api/stock', async (req, res) => {
 app.post('/api/stock', async (req, res) => {
   try {
     const { stock } = req.body;
-    const { db, isMongo, getLocalData, saveLocalData } = getDatabase();
-    if (isMongo) {
+    const { db } = getDatabase();
+    if (db) {
       await db.collection('config').updateOne(
         { key: 'stock' },
         { $set: { key: 'stock', status: stock, updatedAt: Date.now() } },
         { upsert: true }
       );
-    } else {
-      const local = getLocalData();
-      local.stock = stock;
-      saveLocalData(local);
     }
     res.json({ success: true, data: stock });
   } catch (err) {
@@ -718,6 +597,7 @@ async function start() {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`===============================================`);
     console.log(`🍵 THUONGTEA Backend Server running on port ${PORT}`);
+    console.log(`🍃 Connected exclusively to MongoDB Atlas`);
     console.log(`📡 Realtime SSE Order Stream at: /api/orders/stream`);
     console.log(`===============================================`);
   });
