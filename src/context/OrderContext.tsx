@@ -317,40 +317,20 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [members, setMembers] = useState<MemberUser[]>(() => {
     try {
       const saved = localStorage.getItem('AN_TRA_MEMBERS');
-      const memMap = new Map<string, MemberUser>();
       if (saved) {
-        const parsed: MemberUser[] = JSON.parse(saved);
+        const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
+          const memMap = new Map<string, MemberUser>();
           parsed.forEach((m) => {
             const p = (m.phone || '').replace(/\D/g, '');
-            if (p) {
-              if (!memMap.has(p)) {
-                memMap.set(p, { ...m, id: p, phone: p });
-              } else {
-                const ex = memMap.get(p)!;
-                const higher = (m.totalSpent || 0) >= (ex.totalSpent || 0) ? m : ex;
-                memMap.set(p, {
-                  ...higher,
-                  id: p,
-                  phone: p,
-                  points: Math.max(m.points || 0, ex.points || 0),
-                  totalSpent: Math.max(m.totalSpent || 0, ex.totalSpent || 0),
-                });
-              }
+            if (p && !memMap.has(p)) {
+              memMap.set(p, { ...m, id: p, phone: p });
             }
           });
+          return Array.from(memMap.values());
         }
       }
-      // Bổ sung các thành viên mẫu nếu chưa có
-      INITIAL_MEMBERS.forEach((im) => {
-        const p = im.phone.replace(/\D/g, '');
-        if (p && !memMap.has(p)) {
-          memMap.set(p, { ...im, id: p, phone: p });
-        }
-      });
-      const res = Array.from(memMap.values());
-      try { localStorage.setItem('AN_TRA_MEMBERS', JSON.stringify(res)); } catch {}
-      return res;
+      return INITIAL_MEMBERS;
     } catch {
       return INITIAL_MEMBERS;
     }
@@ -571,9 +551,6 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     try {
       localStorage.setItem('AN_TRA_MEMBERS', JSON.stringify(members));
-      if (isInitialFirestoreLoadedRef.current) {
-        members.forEach((m) => apiSaveMember(m));
-      }
     } catch (e) {
       console.warn('Could not save members', e);
     }
@@ -991,11 +968,12 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const updateMember = (phone: string, updated: Partial<MemberUser>) => {
     const cleanPhone = phone.replace(/\D/g, '');
+    const cleanNewPhone = (updated.phone || cleanPhone).replace(/\D/g, '');
     setMembers((prev) => {
       let target: MemberUser | null = null;
       const updatedList = prev.map((m) => {
         if ((m.phone || '').replace(/\D/g, '') === cleanPhone) {
-          const res = { ...m, ...updated, id: cleanPhone, phone: cleanPhone };
+          const res = { ...m, ...updated, id: cleanNewPhone, phone: cleanNewPhone };
           target = res;
           if (currentUser && (currentUser.phone || '').replace(/\D/g, '') === cleanPhone) {
             setCurrentUser(res);
@@ -1007,6 +985,9 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       try { localStorage.setItem('AN_TRA_MEMBERS', JSON.stringify(updatedList)); } catch {}
       broadcast('UPDATE_MEMBERS', updatedList);
       if (target) {
+        if (cleanPhone !== cleanNewPhone) {
+          apiDeleteMember(cleanPhone);
+        }
         apiSaveMember(target);
       }
       return updatedList;
@@ -1040,6 +1021,10 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const deleteMember = (phone: string) => {
     const cleanPhone = phone.replace(/\D/g, '');
+    if (currentUser && (currentUser.phone || '').replace(/\D/g, '') === cleanPhone) {
+      setCurrentUser(null);
+      try { localStorage.removeItem('AN_TRA_CURRENT_USER'); } catch {}
+    }
     setMembers((prev) => {
       const updated = prev.filter((m) => (m.phone || '').replace(/\D/g, '') !== cleanPhone);
       try { localStorage.setItem('AN_TRA_MEMBERS', JSON.stringify(updated)); } catch {}

@@ -4180,10 +4180,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         existingMembers={members}
         onSave={(savedMember) => {
           if (editingMember) {
-            updateMember(savedMember.phone, savedMember);
+            updateMember(editingMember.phone, savedMember);
           } else {
             addMember(savedMember);
           }
+          setIsMemberModalOpen(false);
+          setEditingMember(null);
         }}
       />
 
