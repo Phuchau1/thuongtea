@@ -13,24 +13,46 @@ import { INITIAL_COUPONS } from '../types/coupon';
  */
 const BASE_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 
-async function fetchJson<T>(endpoint: string, options?: RequestInit): Promise<T | null> {
-  try {
-    const res = await fetch(`${BASE_URL}${endpoint}`, {
-      headers: {
-        'Content-Type': 'application/json',
-        ...(options?.headers || {}),
-      },
-      ...options,
-    });
-    if (!res.ok) {
+async function fetchJson<T>(endpoint: string, options?: RequestInit, retries = 2): Promise<T | null> {
+  const isWrite = options?.method && options.method !== 'GET';
+  const maxAttempts = isWrite ? retries + 1 : 1;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
+
+      const res = await fetch(`${BASE_URL}${endpoint}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(options?.headers || {}),
+        },
+        signal: controller.signal,
+        ...options,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!res.ok) {
+        if (attempt < maxAttempts) {
+          await new Promise((r) => setTimeout(r, 600 * attempt));
+          continue;
+        }
+        return null;
+      }
+
+      const json = await res.json();
+      return json?.data !== undefined ? json.data : json;
+    } catch (err) {
+      if (attempt < maxAttempts) {
+        await new Promise((r) => setTimeout(r, 600 * attempt));
+        continue;
+      }
+      console.debug(`[API] Fetch error for ${endpoint}:`, err);
       return null;
     }
-    const json = await res.json();
-    return json?.data !== undefined ? json.data : json;
-  } catch (err) {
-    console.debug(`[API] Fetch error for ${endpoint}:`, err);
-    return null;
   }
+  return null;
 }
 
 // --------------------------------------------------------------------------

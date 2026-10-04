@@ -472,7 +472,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setCurrentStaff((curr) => {
           if (!curr) return staffRes.value[0];
           const matched = staffRes.value.find((s) => s.id === curr.id || s.code === curr.code);
-          return matched ? { ...curr, ...matched } : staffRes.value[0];
+          return matched ? { ...curr, ...matched } : curr;
         });
       }
       if (attRes.status === 'fulfilled' && attRes.value && attRes.value.length > 0) {
@@ -484,7 +484,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (couponsRes.status === 'fulfilled' && couponsRes.value && couponsRes.value.length > 0) {
         setCoupons(couponsRes.value);
       }
-      // Đánh dấu đã tải xong toàn bộ dữ liệu từ Firestore
+      // Đánh dấu đã tải xong toàn bộ dữ liệu ban đầu từ MongoDB Atlas
       isInitialFirestoreLoadedRef.current = true;
     });
   }, []);
@@ -493,7 +493,17 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     const unsub = apiListenOrders((newOrders) => {
       if (newOrders && newOrders.length > 0) {
-        setOrders(sortOrdersNewestFirst(newOrders));
+        setOrders((prev) => {
+          const newMap = new Map(newOrders.map((o) => [o.id, o]));
+          const merged = [...newOrders];
+          for (const p of prev) {
+            // Bảo lưu các đơn vừa thêm trong 90 giây nếu server đang xử lý ghi dữ liệu
+            if (!newMap.has(p.id) && Date.now() - (p.createdTimestamp || 0) < 90000) {
+              merged.push(p);
+            }
+          }
+          return sortOrdersNewestFirst(merged);
+        });
       }
     });
     return () => unsub();
@@ -763,6 +773,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const addProduct = (newProduct: FruitTeaItem) => {
     setProducts((prev) => {
       const updated = [newProduct, ...prev];
+      try { localStorage.setItem('AN_TRA_PRODUCTS', JSON.stringify(updated)); } catch {}
       broadcast('UPDATE_PRODUCTS', updated);
       apiSaveProducts(updated);
       return updated;
@@ -772,6 +783,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const updateProduct = (id: string, updated: Partial<FruitTeaItem>) => {
     setProducts((prev) => {
       const updatedList = prev.map((item) => (item.id === id ? { ...item, ...updated } : item));
+      try { localStorage.setItem('AN_TRA_PRODUCTS', JSON.stringify(updatedList)); } catch {}
       broadcast('UPDATE_PRODUCTS', updatedList);
       apiSaveProducts(updatedList);
       return updatedList;
@@ -781,6 +793,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const deleteProduct = (id: string) => {
     setProducts((prev) => {
       const updatedList = prev.filter((item) => item.id !== id);
+      try { localStorage.setItem('AN_TRA_PRODUCTS', JSON.stringify(updatedList)); } catch {}
       broadcast('UPDATE_PRODUCTS', updatedList);
       apiSaveProducts(updatedList);
       return updatedList;
@@ -789,6 +802,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const resetProductsToDefault = () => {
     setProducts(FRUIT_TEAS);
+    try { localStorage.setItem('AN_TRA_PRODUCTS', JSON.stringify(FRUIT_TEAS)); } catch {}
     broadcast('UPDATE_PRODUCTS', FRUIT_TEAS);
     apiSaveProducts(FRUIT_TEAS);
   };
@@ -799,6 +813,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const addTopping = (newTopping: Topping) => {
     setToppings((prev) => {
       const updated = [...prev, newTopping];
+      try { localStorage.setItem('AN_TRA_TOPPINGS', JSON.stringify(updated)); } catch {}
       broadcast('UPDATE_TOPPINGS', updated);
       apiSaveToppings(updated);
       return updated;
@@ -808,6 +823,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const updateTopping = (id: string, updated: Partial<Topping>) => {
     setToppings((prev) => {
       const updatedList = prev.map((item) => (item.id === id ? { ...item, ...updated } : item));
+      try { localStorage.setItem('AN_TRA_TOPPINGS', JSON.stringify(updatedList)); } catch {}
       broadcast('UPDATE_TOPPINGS', updatedList);
       apiSaveToppings(updatedList);
       return updatedList;
@@ -817,6 +833,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const deleteTopping = (id: string) => {
     setToppings((prev) => {
       const updatedList = prev.filter((item) => item.id !== id);
+      try { localStorage.setItem('AN_TRA_TOPPINGS', JSON.stringify(updatedList)); } catch {}
       broadcast('UPDATE_TOPPINGS', updatedList);
       apiSaveToppings(updatedList);
       return updatedList;
@@ -828,6 +845,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const updatedList = prev.map((item) =>
         item.id === id ? { ...item, isAvailable: item.isAvailable === false ? true : false } : item
       );
+      try { localStorage.setItem('AN_TRA_TOPPINGS', JSON.stringify(updatedList)); } catch {}
       broadcast('UPDATE_TOPPINGS', updatedList);
       apiSaveToppings(updatedList);
       return updatedList;
@@ -1345,25 +1363,31 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateOrderStatus = (orderId: string, status: OrderStatus) => {
-    setOrders((prev) =>
-      prev.map((o) => (o.id === orderId ? { ...o, status } : o))
-    );
+    setOrders((prev) => {
+      const next = prev.map((o) => (o.id === orderId ? { ...o, status } : o));
+      try { localStorage.setItem('AN_TRA_ORDERS', JSON.stringify(next)); } catch {}
+      return next;
+    });
     apiUpdateOrder(orderId, { status });
     broadcast('UPDATE_STATUS', { orderId, status });
   };
 
   const updatePaymentStatus = (orderId: string, paymentStatus: 'paid' | 'unpaid') => {
-    setOrders((prev) =>
-      prev.map((o) => (o.id === orderId ? { ...o, paymentStatus } : o))
-    );
+    setOrders((prev) => {
+      const next = prev.map((o) => (o.id === orderId ? { ...o, paymentStatus } : o));
+      try { localStorage.setItem('AN_TRA_ORDERS', JSON.stringify(next)); } catch {}
+      return next;
+    });
     apiUpdateOrder(orderId, { paymentStatus });
     broadcast('UPDATE_PAYMENT', { orderId, paymentStatus });
   };
 
   const updateOrder = (orderId: string, updated: Partial<PosOrder>) => {
-    setOrders((prev) =>
-      prev.map((o) => (o.id === orderId ? { ...o, ...updated } : o))
-    );
+    setOrders((prev) => {
+      const next = prev.map((o) => (o.id === orderId ? { ...o, ...updated } : o));
+      try { localStorage.setItem('AN_TRA_ORDERS', JSON.stringify(next)); } catch {}
+      return next;
+    });
     apiUpdateOrder(orderId, updated);
     broadcast('UPDATE_ORDER', { orderId, updated });
   };
@@ -1371,6 +1395,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const deleteOrder = (orderId: string) => {
     setOrders((prev) => {
       const updated = prev.filter((o) => o.id !== orderId);
+      try { localStorage.setItem('AN_TRA_ORDERS', JSON.stringify(updated)); } catch {}
       broadcast('DELETE_ORDER', orderId);
       return updated;
     });
@@ -1475,6 +1500,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const addTable = (newTable: DiningTable) => {
     setTables((prev) => {
       const updated = [...prev, newTable];
+      try { localStorage.setItem('AN_TRA_TABLES', JSON.stringify(updated)); } catch {}
       broadcast('UPDATE_TABLES', updated);
       apiSaveTables(updated);
       return updated;
@@ -1486,6 +1512,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const targetTable = prev.find((t) => t.id === id);
       const oldName = targetTable?.name;
       const updatedList = prev.map((t) => (t.id === id ? { ...t, ...updated } : t));
+      try { localStorage.setItem('AN_TRA_TABLES', JSON.stringify(updatedList)); } catch {}
       broadcast('UPDATE_TABLES', updatedList);
       apiSaveTables(updatedList);
 
@@ -1495,6 +1522,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           const updatedOrders = orderPrev.map((o) =>
             o.tableNumber === oldName ? { ...o, tableNumber: updated.name! } : o
           );
+          try { localStorage.setItem('AN_TRA_ORDERS', JSON.stringify(updatedOrders)); } catch {}
           return updatedOrders;
         });
       }
@@ -1520,6 +1548,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     setTables((prev) => {
       const updatedList = prev.filter((t) => t.id !== id);
+      try { localStorage.setItem('AN_TRA_TABLES', JSON.stringify(updatedList)); } catch {}
       broadcast('UPDATE_TABLES', updatedList);
       apiSaveTables(updatedList);
       return updatedList;
@@ -1530,6 +1559,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const resetTablesToDefault = () => {
     setTables(INITIAL_TABLES);
+    try { localStorage.setItem('AN_TRA_TABLES', JSON.stringify(INITIAL_TABLES)); } catch {}
     broadcast('UPDATE_TABLES', INITIAL_TABLES);
     apiSaveTables(INITIAL_TABLES);
   };

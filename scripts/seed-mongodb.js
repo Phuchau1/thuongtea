@@ -6,7 +6,8 @@ import {
   INITIAL_STAFF,
   INITIAL_TABLES,
   INITIAL_TOPPINGS,
-  INITIAL_COUPONS
+  INITIAL_COUPONS,
+  INITIAL_PRODUCTS
 } from '../server/initialData.js';
 
 dotenv.config();
@@ -30,7 +31,13 @@ async function seed() {
     console.log(`✅ Kết nối thành công cơ sở dữ liệu: ${dbName}`);
 
     // 1. Cấu hình bảng config
-    console.log('📦 Đang đồng bộ cấu hình (Bàn, Topping, Nhân viên, Mã giảm giá)...');
+    console.log('📦 Đang đồng bộ cấu hình (Sản phẩm menu, Bàn, Topping, Nhân viên, Mã giảm giá)...');
+    await db.collection('config').updateOne(
+      { key: 'products' },
+      { $set: { key: 'products', list: INITIAL_PRODUCTS, updatedAt: Date.now() } },
+      { upsert: true }
+    );
+
     await db.collection('config').updateOne(
       { key: 'tables' },
       { $set: { key: 'tables', list: INITIAL_TABLES, updatedAt: Date.now() } },

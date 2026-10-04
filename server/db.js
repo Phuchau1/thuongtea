@@ -6,7 +6,8 @@ import {
   INITIAL_STAFF,
   INITIAL_TABLES,
   INITIAL_TOPPINGS,
-  INITIAL_COUPONS
+  INITIAL_COUPONS,
+  INITIAL_PRODUCTS
 } from './initialData.js';
 
 dotenv.config();
@@ -52,7 +53,18 @@ export async function autoMigrateToMongo(db) {
       }
     }
 
-    // 3. Đồng bộ Bàn ăn (Tables)
+    // 3. Đồng bộ Sản Phẩm Menu (Products)
+    const prodsDoc = await db.collection('config').findOne({ key: 'products' });
+    if (!prodsDoc || !prodsDoc.list || prodsDoc.list.length === 0) {
+      console.log(`[MongoDB Atlas] Migrating ${INITIAL_PRODUCTS.length} initial tea products...`);
+      await db.collection('config').updateOne(
+        { key: 'products' },
+        { $set: { key: 'products', list: INITIAL_PRODUCTS, updatedAt: Date.now() } },
+        { upsert: true }
+      );
+    }
+
+    // 4. Đồng bộ Bàn ăn (Tables)
     const tablesDoc = await db.collection('config').findOne({ key: 'tables' });
     if (!tablesDoc || !tablesDoc.list || tablesDoc.list.length === 0) {
       console.log('[MongoDB Atlas] Migrating 12 initial dining tables...');
