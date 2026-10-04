@@ -4591,78 +4591,88 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
       {/* MODAL / TRUNG TÂM ĐIỀU PHỐI & CHECK ĐƠN HÀNG TOÀN HỆ THỐNG (QUY TRÌNH 4 BƯỚC F&B) */}
       {showCheckOrderDrawer && (
-        <div className="fixed inset-0 z-[250] flex items-center justify-center p-2 sm:p-4 bg-black/65 backdrop-blur-md animate-fade-in">
+        <div className="fixed inset-0 z-[250] flex items-center justify-center p-0 sm:p-4 bg-black/65 backdrop-blur-md animate-fade-in">
           <div 
             className="fixed inset-0" 
             onClick={() => setShowCheckOrderDrawer(false)} 
           />
-          <div className="relative w-full max-w-7xl h-[94vh] max-h-[96vh] bg-[#FAF7F2] rounded-3xl p-4 sm:p-6 shadow-2xl z-10 border border-[#DDD5C5] flex flex-col overflow-hidden">
+          <div className="relative w-full max-w-7xl h-full sm:h-[94vh] sm:max-h-[96vh] bg-[#FAF7F2] rounded-none sm:rounded-3xl p-3 sm:p-6 shadow-2xl z-10 border-0 sm:border border-[#DDD5C5] flex flex-col overflow-hidden">
             {/* HEADER MODAL */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#EAE3D2] shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-md shrink-0">
-                  <PackageCheck className="w-6 h-6" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-display font-extrabold text-xl sm:text-2xl text-[#322821]">
-                      Trung Tâm Điều Phối & Check Đơn Hàng
-                    </h3>
-                    <span className="px-2.5 py-0.5 rounded-full bg-[#322821] text-amber-200 text-xs font-bold">
-                      {orders.length} đơn hệ thống
-                    </span>
-                    {uncheckedOrders.length > 0 && (
-                      <span className="px-2.5 py-0.5 rounded-full bg-red-500 text-white text-xs font-extrabold animate-pulse">
-                        🔔 {uncheckedOrders.length} đơn mới cần duyệt
-                      </span>
-                    )}
+            <div className="pb-3 border-b border-[#EAE3D2] shrink-0 space-y-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-md shrink-0">
+                    <PackageCheck className="w-5 h-5 sm:w-6 sm:h-6" />
                   </div>
-                  <p className="text-xs text-[#69776E] mt-0.5">
-                    Quy trình 4 bước chuẩn F&B: 🔔 Chờ Duyệt ➔ 👨‍🍳 Bếp Pha Chế ➔ 🍹 Sẵn Sàng Phục Vụ ➔ ✅ Hoàn Tất
-                  </p>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                      <h3 className="font-display font-extrabold text-base sm:text-2xl text-[#322821] truncate">
+                        Check Đơn & Điều Phối
+                      </h3>
+                      <span className="px-2 py-0.5 rounded-full bg-[#322821] text-amber-200 text-[10px] sm:text-xs font-bold">
+                        {orders.length} đơn
+                      </span>
+                      {uncheckedOrders.length > 0 && (
+                        <span className="px-2 py-0.5 rounded-full bg-red-500 text-white text-[10px] sm:text-xs font-extrabold animate-pulse">
+                          🔔 {uncheckedOrders.length} cần duyệt
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </div>
-
-              {/* ACTION TOOLBAR TRÊN HEADER */}
-              <div className="flex items-center gap-2 flex-wrap shrink-0">
-                {uncheckedOrders.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      stopPosRingtone();
-                      playSuccessSound(true);
-                      uncheckedOrders.forEach(o => markOrderAsChecked(o.id));
-                    }}
-                    className="px-3 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer transition-all"
-                    title="Xác nhận duyệt toàn bộ đơn hàng đang chờ duyệt"
-                  >
-                    <CheckCheck className="w-4 h-4" />
-                    <span>Duyệt Nhanh Tất Cả ({uncheckedOrders.length})</span>
-                  </button>
-                )}
 
                 <button
                   type="button"
-                  onClick={() => {
-                    playClickSound(true);
-                    clearDuplicateOrders();
-                  }}
-                  className="px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer active:scale-95"
-                  title="Dọn dẹp các đơn hàng trùng lặp số đơn hoặc trùng dữ liệu"
+                  onClick={() => setShowCheckOrderDrawer(false)}
+                  className="p-1.5 sm:p-2 rounded-xl text-stone-400 hover:text-stone-800 hover:bg-stone-200/60 transition-all cursor-pointer shrink-0"
+                  title="Đóng cửa sổ"
                 >
-                  <RefreshCw className="w-3.5 h-3.5 text-amber-700" />
-                  <span>Dọn Đơn Trùng</span>
+                  <X className="w-5 h-5" />
                 </button>
+              </div>
+
+              {/* ACTION TOOLBAR TRÊN HEADER */}
+              <div className="flex items-center justify-between gap-2 overflow-x-auto pb-0.5 scrollbar-none">
+                <div className="flex items-center gap-2">
+                  {uncheckedOrders.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        stopPosRingtone();
+                        playSuccessSound(true);
+                        uncheckedOrders.forEach(o => markOrderAsChecked(o.id));
+                      }}
+                      className="px-2.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold flex items-center gap-1 shadow-sm active:scale-95 cursor-pointer whitespace-nowrap shrink-0"
+                      title="Xác nhận duyệt toàn bộ đơn hàng đang chờ duyệt"
+                    >
+                      <CheckCheck className="w-3.5 h-3.5" />
+                      <span>Duyệt Hết ({uncheckedOrders.length})</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      playClickSound(true);
+                      clearDuplicateOrders();
+                    }}
+                    className="px-2.5 py-1.5 rounded-xl bg-white hover:bg-amber-50 text-amber-900 border border-amber-300 text-xs font-bold flex items-center gap-1 shadow-2xs cursor-pointer active:scale-95 whitespace-nowrap shrink-0"
+                    title="Dọn dẹp các đơn hàng trùng lặp số đơn hoặc trùng dữ liệu"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 text-amber-700" />
+                    <span>Dọn Đơn Trùng</span>
+                  </button>
+                </div>
 
                 {/* VIEW MODE SWITCHER */}
-                <div className="flex items-center bg-stone-200/80 p-0.5 rounded-xl border border-stone-300">
+                <div className="flex items-center bg-stone-200/80 p-0.5 rounded-xl border border-stone-300 shrink-0">
                   <button
                     type="button"
                     onClick={() => {
                       playClickSound(true);
                       setCheckDrawerViewMode('grid');
                     }}
-                    className={`px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-all ${
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-all ${
                       checkDrawerViewMode === 'grid'
                         ? 'bg-white text-[#322821] shadow-2xs'
                         : 'text-stone-600 hover:text-stone-900'
@@ -4678,7 +4688,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                       playClickSound(true);
                       setCheckDrawerViewMode('kanban');
                     }}
-                    className={`px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-all ${
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-all ${
                       checkDrawerViewMode === 'kanban'
                         ? 'bg-white text-[#322821] shadow-2xs'
                         : 'text-stone-600 hover:text-stone-900'
@@ -4689,21 +4699,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     <span className="hidden sm:inline">Kanban 4 Cột</span>
                   </button>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => setShowCheckOrderDrawer(false)}
-                  className="p-2 rounded-xl text-stone-400 hover:text-stone-800 hover:bg-stone-200/60 transition-all cursor-pointer"
-                  title="Đóng cửa sổ"
-                >
-                  <X className="w-5 h-5" />
-                </button>
               </div>
             </div>
 
             {/* QUY TRÌNH PIPELINE 4 BƯỚC VẬN HÀNH */}
             <div className="py-2.5 border-b border-[#EAE3D2] shrink-0">
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+              <div className="flex sm:grid sm:grid-cols-5 gap-2 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
                 {/* BƯỚC 1: CHỜ DUYỆT */}
                 <button
                   type="button"
@@ -4711,18 +4712,18 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     playClickSound(true);
                     setCheckDrawerTab('pending');
                   }}
-                  className={`p-2.5 rounded-2xl border text-left transition-all relative overflow-hidden flex flex-col justify-between ${
+                  className={`min-w-[130px] sm:min-w-0 shrink-0 sm:shrink p-2.5 rounded-2xl border text-left transition-all relative overflow-hidden flex flex-col justify-between ${
                     checkDrawerTab === 'pending'
                       ? 'bg-amber-500 text-white border-amber-600 shadow-md ring-2 ring-amber-300'
-                      : 'bg-white/90 text-stone-700 border-stone-200 hover:border-amber-400 hover:bg-amber-50/50'
+                      : 'bg-white text-stone-700 border-stone-200 hover:border-amber-400 hover:bg-amber-50/50'
                   }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-black uppercase tracking-wider flex items-center gap-1">
-                      <Bell className="w-3.5 h-3.5" />
-                      Bước 1: Chờ Duyệt
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-[11px] font-black uppercase tracking-wider flex items-center gap-1 truncate">
+                      <Bell className="w-3 h-3 shrink-0" />
+                      <span>1: Chờ Duyệt</span>
                     </span>
-                    <span className={`text-xs font-black px-2 py-0.5 rounded-full ${
+                    <span className={`text-[10px] font-black px-1.5 py-0.2 rounded-full shrink-0 ${
                       checkDrawerTab === 'pending'
                         ? 'bg-white text-amber-600'
                         : uncheckedOrders.length > 0
@@ -4732,8 +4733,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                       {uncheckedOrders.length}
                     </span>
                   </div>
-                  <div className={`text-[10px] mt-1 ${checkDrawerTab === 'pending' ? 'text-amber-100' : 'text-stone-500'}`}>
-                    Đơn mới từ bàn / online
+                  <div className={`text-[10px] mt-1 truncate ${checkDrawerTab === 'pending' ? 'text-amber-100' : 'text-stone-500'}`}>
+                    Đơn mới từ quầy / QR
                   </div>
                 </button>
 
@@ -4744,18 +4745,18 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     playClickSound(true);
                     setCheckDrawerTab('preparing');
                   }}
-                  className={`p-2.5 rounded-2xl border text-left transition-all relative overflow-hidden flex flex-col justify-between ${
+                  className={`min-w-[130px] sm:min-w-0 shrink-0 sm:shrink p-2.5 rounded-2xl border text-left transition-all relative overflow-hidden flex flex-col justify-between ${
                     checkDrawerTab === 'preparing'
                       ? 'bg-blue-600 text-white border-blue-700 shadow-md ring-2 ring-blue-300'
-                      : 'bg-white/90 text-stone-700 border-stone-200 hover:border-blue-400 hover:bg-blue-50/50'
+                      : 'bg-white text-stone-700 border-stone-200 hover:border-blue-400 hover:bg-blue-50/50'
                   }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-black uppercase tracking-wider flex items-center gap-1">
-                      <ChefHat className="w-3.5 h-3.5" />
-                      Bước 2: Bếp Pha Chế
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-[11px] font-black uppercase tracking-wider flex items-center gap-1 truncate">
+                      <ChefHat className="w-3 h-3 shrink-0" />
+                      <span>2: Bếp Pha</span>
                     </span>
-                    <span className={`text-xs font-black px-2 py-0.5 rounded-full ${
+                    <span className={`text-[10px] font-black px-1.5 py-0.2 rounded-full shrink-0 ${
                       checkDrawerTab === 'preparing'
                         ? 'bg-white text-blue-600'
                         : preparingOrders.length > 0
@@ -4765,7 +4766,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                       {preparingOrders.length}
                     </span>
                   </div>
-                  <div className={`text-[10px] mt-1 ${checkDrawerTab === 'preparing' ? 'text-blue-100' : 'text-stone-500'}`}>
+                  <div className={`text-[10px] mt-1 truncate ${checkDrawerTab === 'preparing' ? 'text-blue-100' : 'text-stone-500'}`}>
                     Barista đang làm món
                   </div>
                 </button>
@@ -4777,18 +4778,18 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     playClickSound(true);
                     setCheckDrawerTab('ready');
                   }}
-                  className={`p-2.5 rounded-2xl border text-left transition-all relative overflow-hidden flex flex-col justify-between ${
+                  className={`min-w-[130px] sm:min-w-0 shrink-0 sm:shrink p-2.5 rounded-2xl border text-left transition-all relative overflow-hidden flex flex-col justify-between ${
                     checkDrawerTab === 'ready'
                       ? 'bg-purple-600 text-white border-purple-700 shadow-md ring-2 ring-purple-300'
-                      : 'bg-white/90 text-stone-700 border-stone-200 hover:border-purple-400 hover:bg-purple-50/50'
+                      : 'bg-white text-stone-700 border-stone-200 hover:border-purple-400 hover:bg-purple-50/50'
                   }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-black uppercase tracking-wider flex items-center gap-1">
-                      <Coffee className="w-3.5 h-3.5" />
-                      Bước 3: Sẵn Sàng
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-[11px] font-black uppercase tracking-wider flex items-center gap-1 truncate">
+                      <Coffee className="w-3 h-3 shrink-0" />
+                      <span>3: Sẵn Sàng</span>
                     </span>
-                    <span className={`text-xs font-black px-2 py-0.5 rounded-full ${
+                    <span className={`text-[10px] font-black px-1.5 py-0.2 rounded-full shrink-0 ${
                       checkDrawerTab === 'ready'
                         ? 'bg-white text-purple-600'
                         : readyOrders.length > 0
@@ -4798,8 +4799,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                       {readyOrders.length}
                     </span>
                   </div>
-                  <div className={`text-[10px] mt-1 ${checkDrawerTab === 'ready' ? 'text-purple-100' : 'text-stone-500'}`}>
-                    Chờ bưng bàn / giao shipper
+                  <div className={`text-[10px] mt-1 truncate ${checkDrawerTab === 'ready' ? 'text-purple-100' : 'text-stone-500'}`}>
+                    Chờ bưng bàn / giao
                   </div>
                 </button>
 
@@ -4810,18 +4811,18 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     playClickSound(true);
                     setCheckDrawerTab('completed');
                   }}
-                  className={`p-2.5 rounded-2xl border text-left transition-all relative overflow-hidden flex flex-col justify-between ${
+                  className={`min-w-[130px] sm:min-w-0 shrink-0 sm:shrink p-2.5 rounded-2xl border text-left transition-all relative overflow-hidden flex flex-col justify-between ${
                     checkDrawerTab === 'completed'
                       ? 'bg-emerald-600 text-white border-emerald-700 shadow-md ring-2 ring-emerald-300'
-                      : 'bg-white/90 text-stone-700 border-stone-200 hover:border-emerald-400 hover:bg-emerald-50/50'
+                      : 'bg-white text-stone-700 border-stone-200 hover:border-emerald-400 hover:bg-emerald-50/50'
                   }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-black uppercase tracking-wider flex items-center gap-1">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      Bước 4: Hoàn Tất
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-[11px] font-black uppercase tracking-wider flex items-center gap-1 truncate">
+                      <CheckCircle2 className="w-3 h-3 shrink-0" />
+                      <span>4: Hoàn Tất</span>
                     </span>
-                    <span className={`text-xs font-black px-2 py-0.5 rounded-full ${
+                    <span className={`text-[10px] font-black px-1.5 py-0.2 rounded-full shrink-0 ${
                       checkDrawerTab === 'completed'
                         ? 'bg-white text-emerald-600'
                         : completedOrders.length > 0
@@ -4831,8 +4832,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                       {completedOrders.length}
                     </span>
                   </div>
-                  <div className={`text-[10px] mt-1 ${checkDrawerTab === 'completed' ? 'text-emerald-100' : 'text-stone-500'}`}>
-                    Đã thanh toán & phục vụ
+                  <div className={`text-[10px] mt-1 truncate ${checkDrawerTab === 'completed' ? 'text-emerald-100' : 'text-stone-500'}`}>
+                    Đã xong & thanh toán
                   </div>
                 </button>
 
@@ -4843,17 +4844,17 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     playClickSound(true);
                     setCheckDrawerTab('all');
                   }}
-                  className={`p-2.5 rounded-2xl border text-left transition-all relative overflow-hidden flex flex-col justify-between col-span-2 sm:col-span-1 ${
+                  className={`min-w-[130px] sm:min-w-0 shrink-0 sm:shrink p-2.5 rounded-2xl border text-left transition-all relative overflow-hidden flex flex-col justify-between ${
                     checkDrawerTab === 'all'
                       ? 'bg-[#322821] text-white border-stone-900 shadow-md ring-2 ring-amber-300'
-                      : 'bg-white/90 text-stone-700 border-stone-200 hover:border-stone-400 hover:bg-stone-100'
+                      : 'bg-white text-stone-700 border-stone-200 hover:border-stone-400 hover:bg-stone-100'
                   }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-black uppercase tracking-wider">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-[11px] font-black uppercase tracking-wider truncate">
                       Tất Cả Đơn
                     </span>
-                    <span className={`text-xs font-black px-2 py-0.5 rounded-full ${
+                    <span className={`text-[10px] font-black px-1.5 py-0.2 rounded-full shrink-0 ${
                       checkDrawerTab === 'all'
                         ? 'bg-amber-400 text-stone-900'
                         : 'bg-stone-200 text-stone-700'
@@ -4861,7 +4862,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                       {orders.length}
                     </span>
                   </div>
-                  <div className={`text-[10px] mt-1 ${checkDrawerTab === 'all' ? 'text-stone-300' : 'text-stone-500'}`}>
+                  <div className={`text-[10px] mt-1 truncate ${checkDrawerTab === 'all' ? 'text-stone-300' : 'text-stone-500'}`}>
                     Toàn bộ đơn trong ca
                   </div>
                 </button>
@@ -4869,14 +4870,14 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             </div>
 
             {/* BỘ LỌC TÌM KIẾM & TIÊU CHÍ ĐƠN HÀNG */}
-            <div className="py-2.5 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2.5 shrink-0 border-b border-[#EAE3D2]">
+            <div className="py-2.5 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2 shrink-0 border-b border-[#EAE3D2]">
               <div className="relative flex-1">
                 <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   value={checkDrawerSearch}
                   onChange={(e) => setCheckDrawerSearch(e.target.value)}
-                  placeholder="Tìm theo số đơn (#042), số bàn, tên khách, số điện thoại, tên món..."
+                  placeholder="Tìm số đơn (#042), bàn, khách, SĐT, món..."
                   className="w-full pl-9 pr-8 py-2 rounded-xl bg-white border border-[#DDD5C5] text-xs text-[#322821] placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-500/50"
                 />
                 {checkDrawerSearch && (
@@ -4890,10 +4891,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 )}
               </div>
 
-              <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0">
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
                 {/* LỌC HÌNH THỨC PHỤC VỤ */}
-                <div className="flex items-center bg-white p-1 rounded-xl border border-[#DDD5C5] shrink-0 text-xs">
-                  <span className="text-[11px] font-bold text-stone-400 px-1.5">Hình thức:</span>
+                <div className="flex items-center bg-white p-0.5 rounded-xl border border-[#DDD5C5] shrink-0 text-xs">
+                  <span className="text-[10px] font-bold text-stone-400 px-1.5">Hình thức:</span>
                   <button
                     type="button"
                     onClick={() => setCheckDrawerTypeFilter('all')}
@@ -4914,7 +4915,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                         : 'text-stone-600 hover:bg-stone-100'
                     }`}
                   >
-                    🪑 Tại Quán
+                    Tại Quán
                   </button>
                   <button
                     type="button"
@@ -4925,13 +4926,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                         : 'text-stone-600 hover:bg-stone-100'
                     }`}
                   >
-                    🛵 Giao Hàng
+                    Giao Hàng
                   </button>
                 </div>
 
                 {/* LỌC THANH TOÁN */}
-                <div className="flex items-center bg-white p-1 rounded-xl border border-[#DDD5C5] shrink-0 text-xs">
-                  <span className="text-[11px] font-bold text-stone-400 px-1.5">Thanh toán:</span>
+                <div className="flex items-center bg-white p-0.5 rounded-xl border border-[#DDD5C5] shrink-0 text-xs">
+                  <span className="text-[10px] font-bold text-stone-400 px-1.5">Thanh toán:</span>
                   <button
                     type="button"
                     onClick={() => setCheckDrawerPaymentFilter('all')}
@@ -4952,7 +4953,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                         : 'text-stone-600 hover:bg-stone-100'
                     }`}
                   >
-                    ✅ Đã TT
+                    Đã TT
                   </button>
                   <button
                     type="button"
@@ -4963,7 +4964,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                         : 'text-stone-600 hover:bg-stone-100'
                     }`}
                   >
-                    🟠 Chưa TT
+                    Chưa TT
                   </button>
                 </div>
               </div>
@@ -5456,120 +5457,123 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
                           {/* Dòng 4: Tổng tiền & Nút tác vụ theo từng bước quy trình */}
                           <div className="pt-3 border-t border-[#EAE3D2] flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-1">
-                            <div>
-                              <span className="text-[11px] text-stone-500 block">Tổng tiền thanh toán:</span>
-                              <span className="font-sans font-extrabold text-xl text-[#D95829]">
-                                {formatVND(o.total)}
-                              </span>
-                            </div>
+                            {/* Dòng cuối: Tổng tiền và các nút hành động */}
+                            <div className="pt-3 border-t border-[#F0EAE0] mt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                              <div className="flex items-baseline justify-between sm:justify-start gap-2">
+                                <span className="text-[11px] text-stone-500 font-medium">Tổng tiền:</span>
+                                <span className="font-sans font-black text-base sm:text-lg text-[#D95829]">
+                                  {formatVND(o.total)}
+                                </span>
+                              </div>
 
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              {/* HÀNH ĐỘNG CHO BƯỚC 1: CHỜ DUYỆT */}
-                              {isUnchecked && (
-                                <>
+                              <div className="grid grid-cols-2 sm:flex items-center gap-1.5 w-full sm:w-auto">
+                                {/* HÀNH ĐỘNG CHO BƯỚC 1: CHỜ DUYỆT */}
+                                {isUnchecked && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        stopPosRingtone();
+                                        markOrderAsChecked(o.id);
+                                        setPrintingOrder(o);
+                                        playSuccessSound(true);
+                                      }}
+                                      className="py-2 px-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs flex items-center justify-center gap-1 shadow-2xs cursor-pointer active:scale-95"
+                                    >
+                                      <Printer className="w-3.5 h-3.5" />
+                                      <span>🖨️ In & Duyệt</span>
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        stopPosRingtone();
+                                        markOrderAsChecked(o.id);
+                                        playSuccessSound(true);
+                                      }}
+                                      className="py-2 px-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs flex items-center justify-center gap-1 shadow-2xs cursor-pointer active:scale-95"
+                                    >
+                                      <Check className="w-3.5 h-3.5" />
+                                      <span>✔ Duyệt Đơn</span>
+                                    </button>
+                                  </>
+                                )}
+
+                                {/* HÀNH ĐỘNG CHO BƯỚC 2: BẾP ĐANG PHA CHẾ */}
+                                {isPreparing && (
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      stopPosRingtone();
-                                      markOrderAsChecked(o.id);
-                                      setPrintingOrder(o);
+                                      updateOrderStatus(o.id, 'ready');
                                       playSuccessSound(true);
                                     }}
-                                    className="py-2 px-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs flex items-center justify-center gap-1 shadow-2xs cursor-pointer active:scale-95"
+                                    className="col-span-2 sm:col-span-1 py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer active:scale-95"
                                   >
-                                    <Printer className="w-3.5 h-3.5" />
-                                    <span>🖨️ In & Duyệt</span>
+                                    <Coffee className="w-3.5 h-3.5" />
+                                    <span>Pha Xong ➔ Sẵn Sàng</span>
                                   </button>
+                                )}
 
+                                {/* HÀNH ĐỘNG CHO BƯỚC 3: SẴN SÀNG PHỤC VỤ */}
+                                {isReady && (
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      stopPosRingtone();
-                                      markOrderAsChecked(o.id);
+                                      updateOrderStatus(o.id, 'completed');
                                       playSuccessSound(true);
                                     }}
-                                    className="py-2 px-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs flex items-center justify-center gap-1 shadow-2xs cursor-pointer active:scale-95"
+                                    className="col-span-2 sm:col-span-1 py-2 px-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer active:scale-95"
                                   >
-                                    <Check className="w-3.5 h-3.5" />
-                                    <span>✔ Duyệt Đơn</span>
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    <span>Đã Phục Vụ ➔ Hoàn Tất</span>
                                   </button>
-                                </>
-                              )}
+                                )}
 
-                              {/* HÀNH ĐỘNG CHO BƯỚC 2: BẾP ĐANG PHA CHẾ */}
-                              {isPreparing && (
+                                {/* IN BILL */}
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    updateOrderStatus(o.id, 'ready');
+                                    stopPosRingtone();
+                                    setPrintingOrder(o);
                                     playSuccessSound(true);
                                   }}
-                                  className="py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer active:scale-95"
+                                  className="py-2 px-2 rounded-xl bg-white hover:bg-stone-100 text-stone-700 border border-stone-200 font-bold text-xs flex items-center justify-center gap-1 cursor-pointer"
+                                  title="In phiếu chế biến / bill thanh toán"
                                 >
-                                  <Coffee className="w-3.5 h-3.5" />
-                                  <span>Pha Xong ➔ Sẵn Sàng</span>
+                                  <Printer className="w-3.5 h-3.5 text-stone-600" />
+                                  <span>In Bill</span>
                                 </button>
-                              )}
 
-                              {/* HÀNH ĐỘNG CHO BƯỚC 3: SẴN SÀNG PHỤC VỤ */}
-                              {isReady && (
+                                {/* XEM CHI TIẾT */}
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    updateOrderStatus(o.id, 'completed');
-                                    playSuccessSound(true);
+                                    stopPosRingtone();
+                                    setCheckOrderModal(o);
                                   }}
-                                  className="py-2 px-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer active:scale-95"
+                                  className="py-2 px-2 rounded-xl bg-white hover:bg-stone-100 border border-[#DDD6C8] text-[#322821] font-bold text-xs flex items-center justify-center gap-1 cursor-pointer"
                                 >
-                                  <CheckCircle2 className="w-3.5 h-3.5" />
-                                  <span>Đã Phục Vụ ➔ Hoàn Tất</span>
+                                  <Eye className="w-3.5 h-3.5" />
+                                  <span>Chi Tiết</span>
                                 </button>
-                              )}
 
-                              {/* IN BILL */}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  stopPosRingtone();
-                                  setPrintingOrder(o);
-                                  playSuccessSound(true);
-                                }}
-                                className="py-2 px-2.5 rounded-xl bg-white hover:bg-stone-100 text-stone-700 border border-stone-200 font-bold text-xs flex items-center justify-center gap-1 cursor-pointer"
-                                title="In phiếu chế biến / bill thanh toán"
-                              >
-                                <Printer className="w-3.5 h-3.5 text-stone-600" />
-                                <span>In Bill</span>
-                              </button>
-
-                              {/* XEM CHI TIẾT */}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  stopPosRingtone();
-                                  setCheckOrderModal(o);
-                                }}
-                                className="py-2 px-2.5 rounded-xl bg-white hover:bg-stone-100 border border-[#DDD6C8] text-[#322821] font-bold text-xs flex items-center justify-center gap-1 cursor-pointer"
-                              >
-                                <Eye className="w-3.5 h-3.5" />
-                                <span>Chi Tiết</span>
-                              </button>
-
-                              {/* NẠP POS THU TIỀN */}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  stopPosRingtone();
-                                  if (isUnchecked) {
-                                    markOrderAsChecked(o.id);
-                                  }
-                                  handleLoadTableOrderToPos(o);
-                                  setShowCheckOrderDrawer(false);
-                                }}
-                                className="py-2 px-3 rounded-xl bg-[#322821] hover:bg-[#211A15] text-white font-bold text-xs flex items-center justify-center gap-1 shadow-2xs cursor-pointer active:scale-95"
-                              >
-                                <CreditCard className="w-3.5 h-3.5 text-amber-300" />
-                                <span>Nạp POS</span>
-                              </button>
+                                {/* NẠP POS THU TIỀN */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    stopPosRingtone();
+                                    if (isUnchecked) {
+                                      markOrderAsChecked(o.id);
+                                    }
+                                    handleLoadTableOrderToPos(o);
+                                    setShowCheckOrderDrawer(false);
+                                  }}
+                                  className="col-span-2 sm:col-span-1 py-2 px-3 rounded-xl bg-[#322821] hover:bg-[#211A15] text-white font-bold text-xs flex items-center justify-center gap-1 shadow-2xs cursor-pointer active:scale-95"
+                                >
+                                  <CreditCard className="w-3.5 h-3.5 text-amber-300" />
+                                  <span>Nạp POS</span>
+                                </button>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -5581,14 +5585,14 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             </div>
 
             {/* FOOTER MODAL - THỐNG KÊ TỔNG HỢP & NÚT THOÁT */}
-            <div className="pt-3 border-t border-[#EAE3D2] flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
-              <div className="flex items-center gap-3 text-xs text-stone-600 flex-wrap">
+            <div className="pt-2.5 sm:pt-3 border-t border-[#EAE3D2] flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shrink-0 bg-[#FAF7F2]">
+              <div className="flex items-center gap-2 text-[11px] sm:text-xs text-stone-600 overflow-x-auto pb-0.5 sm:pb-0 scrollbar-none whitespace-nowrap">
                 <span>
-                  Tổng số đơn: <strong className="text-[#322821]">{orders.length}</strong>
+                  Tổng: <strong className="text-[#322821]">{orders.length}</strong>
                 </span>
                 <span>•</span>
                 <span className="text-amber-800 font-semibold">
-                  Chờ duyệt: <strong>{uncheckedOrders.length}</strong>
+                  Chờ: <strong>{uncheckedOrders.length}</strong>
                 </span>
                 <span>•</span>
                 <span className="text-blue-800 font-semibold">
@@ -5600,15 +5604,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 </span>
                 <span>•</span>
                 <span className="text-emerald-800 font-semibold">
-                  Hoàn tất: <strong>{completedOrders.length}</strong>
+                  Xong: <strong>{completedOrders.length}</strong>
                 </span>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="grid grid-cols-2 sm:flex items-center gap-2 w-full sm:w-auto">
                 <button
                   type="button"
                   onClick={() => window.print()}
-                  className="px-4 py-2 rounded-xl bg-white hover:bg-stone-100 border border-[#DDD6C8] text-xs font-bold text-[#322821] flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  className="px-3.5 py-2 rounded-xl bg-white hover:bg-stone-100 border border-[#DDD6C8] text-xs font-bold text-[#322821] flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
                 >
                   <Printer className="w-3.5 h-3.5 text-stone-600" />
                   <span>In Báo Cáo</span>
@@ -5617,7 +5621,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowCheckOrderDrawer(false)}
-                  className="px-6 py-2 rounded-xl bg-[#322821] hover:bg-[#211A15] text-white text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer"
+                  className="px-5 py-2 rounded-xl bg-[#322821] hover:bg-[#211A15] text-white text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer flex items-center justify-center"
                 >
                   Đóng Cửa Sổ
                 </button>
