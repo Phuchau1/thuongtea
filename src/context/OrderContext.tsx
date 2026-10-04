@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useRef } from 'react';
 import type { PosOrder, OrderStatus, MenuItemStockStatus } from '../types/pos';
+import { sortOrdersNewestFirst } from '../types/pos';
 import type { MemberUser } from '../types/user';
 import { INITIAL_MEMBERS } from '../types/user';
 import type { FruitTeaItem, Topping, DiningTable } from '../types/tea';
@@ -14,6 +15,7 @@ import {
   apiUpdateOrder, 
   apiCheckOrder, 
   apiClearTable,
+  apiClearAllTables,
   apiClearDuplicateOrders,
   apiGetMembers,
   apiSaveMember,
@@ -116,7 +118,8 @@ interface OrderContextType {
   // Quản Lý Trạng Thái Bàn
   getTableStatus: (tableId: string) => 'available' | 'occupied_unpaid' | 'occupied_paid';
   getTableOrder: (tableId: string) => PosOrder | null;
-  clearTable: (tableId: string) => void;
+  clearTable: (tableId: string) => Promise<void> | void;
+  clearAllTables: () => Promise<void> | void;
 }
 
 const OrderContext = createContext<OrderContextType | undefined>(undefined);
@@ -232,9 +235,9 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [orders, setOrders] = useState<PosOrder[]>(() => {
     try {
       const saved = localStorage.getItem('AN_TRA_ORDERS');
-      return saved ? JSON.parse(saved) : INITIAL_DEMO_ORDERS;
+      return saved ? sortOrdersNewestFirst(JSON.parse(saved)) : sortOrdersNewestFirst(INITIAL_DEMO_ORDERS);
     } catch {
-      return INITIAL_DEMO_ORDERS;
+      return sortOrdersNewestFirst(INITIAL_DEMO_ORDERS);
     }
   });
 
@@ -429,7 +432,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       apiGetCoupons()
     ]).then(([ordersRes, membersRes, prodsRes, topsRes, tabsRes, staffRes, attRes, stockRes, couponsRes]) => {
       if (ordersRes.status === 'fulfilled' && ordersRes.value && ordersRes.value.length > 0) {
-        setOrders(ordersRes.value);
+        setOrders(sortOrdersNewestFirst(ordersRes.value));
       }
       if (membersRes.status === 'fulfilled' && membersRes.value && membersRes.value.length > 0) {
         const memMap = new Map<string, MemberUser>();
@@ -490,7 +493,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     const unsub = apiListenOrders((newOrders) => {
       if (newOrders && newOrders.length > 0) {
-        setOrders(newOrders);
+        setOrders(sortOrdersNewestFirst(newOrders));
       }
     });
     return () => unsub();
@@ -630,7 +633,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       } else if (e.key === 'AN_TRA_CURRENT_USER' && e.newValue) {
         try { setCurrentUser(JSON.parse(e.newValue)); } catch {}
       } else if (e.key === 'AN_TRA_ORDERS' && e.newValue) {
-        try { setOrders(JSON.parse(e.newValue)); } catch {}
+        try { setOrders(sortOrdersNewestFirst(JSON.parse(e.newValue))); } catch {}
       } else if (e.key === 'AN_TRA_TOPPINGS' && e.newValue) {
         try { setToppings(JSON.parse(e.newValue)); } catch {}
       } else if (e.key === 'AN_TRA_TABLES' && e.newValue) {
@@ -659,7 +662,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       channel.onmessage = (event) => {
         const { type, payload } = event.data;
         if (type === 'NEW_ORDER') {
-          setOrders((prev) => [payload, ...prev.filter((o) => o.id !== payload.id)]);
+          setOrders((prev) => sortOrdersNewestFirst([payload, ...prev.filter((o) => o.id !== payload.id)]));
           setUnreadPosOrdersCount((c) => c + 1);
         } else if (type === 'DELETE_ORDER') {
           setOrders((prev) => prev.filter((o) => o.id !== payload));
@@ -715,10 +718,20 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         } else if (type === 'UPDATE_CURRENT_USER') {
           setCurrentUser(payload);
         } else if (type === 'CLEAR_TABLE') {
+          const cleanTbl = (String(payload) || '').trim().toLowerCase();
+          setOrders((prev) =>
+            prev.map((o) => {
+              const orderTbl = (o.tableNumber || o.customer?.tableNumber || '').trim().toLowerCase();
+              return orderTbl === cleanTbl && !o.tableCleared
+                ? { ...o, tableCleared: true, paymentStatus: 'paid' as const }
+                : o;
+            })
+          );
+        } else if (type === 'CLEAR_ALL_TABLES') {
           setOrders((prev) =>
             prev.map((o) =>
-              o.tableNumber === payload && !o.tableCleared
-                ? { ...o, tableCleared: true, paymentStatus: 'paid' }
+              (o.tableNumber || o.customer?.tableNumber) && !o.tableCleared
+                ? { ...o, tableCleared: true, paymentStatus: 'paid' as const }
                 : o
             )
           );
@@ -1274,9 +1287,10 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const addOrder = (order: PosOrder) => {
     const orderWithCheck: PosOrder = {
       ...order,
+      createdTimestamp: order.createdTimestamp || Date.now(),
       checked: false,
     };
-    setOrders((prev) => [orderWithCheck, ...prev.filter(o => o.id !== orderWithCheck.id)]);
+    setOrders((prev) => sortOrdersNewestFirst([orderWithCheck, ...prev.filter(o => o.id !== orderWithCheck.id)]));
     setActiveCustomerOrderId(order.id);
     setUnreadPosOrdersCount((c) => c + 1);
     apiCreateOrder(orderWithCheck);
@@ -1380,9 +1394,11 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // QUẢN LÝ TRẠNG THÁI BÀN (BÀN ĐANG NGỒI / BÀN TRỐNG)
   // ==========================================
   const getTableStatus = (tableId: string): 'available' | 'occupied_unpaid' | 'occupied_paid' => {
-    const activeOrders = orders.filter(
-      (o) => o.tableNumber === tableId && !o.tableCleared && o.status !== 'cancelled'
-    );
+    const cleanTbl = (tableId || '').trim().toLowerCase();
+    const activeOrders = orders.filter((o) => {
+      const orderTbl = (o.tableNumber || o.customer?.tableNumber || '').trim().toLowerCase();
+      return orderTbl === cleanTbl && !o.tableCleared && o.status !== 'cancelled';
+    });
     if (activeOrders.length === 0) return 'available';
 
     const hasUnpaid = activeOrders.some((o) => o.paymentStatus === 'unpaid');
@@ -1392,9 +1408,11 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const getTableOrder = (tableId: string): PosOrder | null => {
-    const activeOrders = orders.filter(
-      (o) => o.tableNumber === tableId && !o.tableCleared && o.status !== 'cancelled'
-    );
+    const cleanTbl = (tableId || '').trim().toLowerCase();
+    const activeOrders = orders.filter((o) => {
+      const orderTbl = (o.tableNumber || o.customer?.tableNumber || '').trim().toLowerCase();
+      return orderTbl === cleanTbl && !o.tableCleared && o.status !== 'cancelled';
+    });
     if (activeOrders.length === 0) return null;
     if (activeOrders.length === 1) return activeOrders[0];
 
@@ -1417,16 +1435,38 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
   };
 
-  const clearTable = (tableId: string) => {
-    setOrders((prev) =>
-      prev.map((o) =>
-        o.tableNumber === tableId && !o.tableCleared
-          ? { ...o, tableCleared: true, paymentStatus: 'paid' }
-          : o
-      )
-    );
-    apiClearTable(tableId);
+  const clearTable = async (tableId: string) => {
+    const cleanTbl = (tableId || '').trim().toLowerCase();
+    setOrders((prev) => {
+      const updated = prev.map((o) => {
+        const orderTbl = (o.tableNumber || o.customer?.tableNumber || '').trim().toLowerCase();
+        return orderTbl === cleanTbl && !o.tableCleared
+          ? { ...o, tableCleared: true, paymentStatus: 'paid' as const }
+          : o;
+      });
+      try {
+        localStorage.setItem('AN_TRA_ORDERS', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+    await apiClearTable(tableId);
     broadcast('CLEAR_TABLE', tableId);
+  };
+
+  const clearAllTables = async () => {
+    setOrders((prev) => {
+      const updated = prev.map((o) =>
+        (o.tableNumber || o.customer?.tableNumber) && !o.tableCleared
+          ? { ...o, tableCleared: true, paymentStatus: 'paid' as const }
+          : o
+      );
+      try {
+        localStorage.setItem('AN_TRA_ORDERS', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+    await apiClearAllTables();
+    broadcast('CLEAR_ALL_TABLES', null);
   };
 
   // ==========================================
@@ -1579,6 +1619,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         getTableStatus,
         getTableOrder,
         clearTable,
+        clearAllTables,
       }}
     >
       {children}

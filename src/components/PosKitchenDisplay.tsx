@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { 
   Clock, ChefHat, CheckCircle2, Printer, Search, ArrowLeft, Coffee
 } from 'lucide-react';
 import { useOrders } from '../context/OrderContext';
 import { FRUIT_TEAS } from '../data/teas';
 import type { PosOrder, OrderStatus } from '../types/pos';
+import { sortOrdersNewestFirst } from '../types/pos';
 import { ReceiptPrintModal } from './ReceiptPrintModal';
 
 interface PosKitchenDisplayProps {
@@ -36,14 +37,17 @@ export const PosKitchenDisplay: React.FC<PosKitchenDisplayProps> = ({ onBackToSt
     return () => clearInterval(interval);
   }, [markPosOrdersAsRead]);
 
-  const filteredOrders = orders.filter((o) => {
-    const matchesType = filterType === 'all' || o.orderType === filterType;
-    const matchesSearch =
-      o.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      o.customer.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      o.customer.phone.includes(searchQuery);
-    return matchesType && matchesSearch;
-  });
+  const filteredOrders = useMemo(() => {
+    const list = orders.filter((o) => {
+      const matchesType = filterType === 'all' || o.orderType === filterType;
+      const matchesSearch =
+        o.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        o.customer.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        o.customer.phone.includes(searchQuery);
+      return matchesType && matchesSearch;
+    });
+    return sortOrdersNewestFirst(list);
+  }, [orders, filterType, searchQuery]);
 
   const pendingOrders = filteredOrders.filter((o) => o.status === 'pending');
   const preparingOrders = filteredOrders.filter((o) => o.status === 'preparing');

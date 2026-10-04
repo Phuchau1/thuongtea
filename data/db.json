@@ -67,7 +67,8 @@
       "paymentStatus": "paid",
       "staffNote": "Đã thanh toán VietQR",
       "checked": true,
-      "checkedAt": "11:47"
+      "checkedAt": "11:47",
+      "createdTimestamp": 1790743629460
     },
     {
       "id": "QR-317353",
@@ -134,7 +135,8 @@
       "paymentStatus": "paid",
       "staffNote": "Thu ngân: Ngô Thành Phúc Hậu - Đã nhận chuyển khoản VietQR",
       "checked": false,
-      "tableCleared": true
+      "tableCleared": true,
+      "createdTimestamp": 1790743316109
     },
     {
       "id": "POS-307931",
@@ -240,7 +242,8 @@
       "paymentStatus": "paid",
       "staffNote": "Thu ngân: Ngô Thành Phúc Hậu - Tiền mặt khách đưa 200.000đ (tiền thừa 96.000đ)",
       "checked": false,
-      "tableCleared": true
+      "tableCleared": true,
+      "createdTimestamp": 1790743301749
     }
   ],
   "members": [

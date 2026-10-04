@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useOrders } from '../context/OrderContext';
 import type { PosOrder } from '../types/pos';
+import { sortOrdersNewestFirst } from '../types/pos';
 import type { CartItem, FruitTeaItem } from '../types/tea';
 import type { StaffMember, StaffRole } from '../types/staff';
 import type { MemberUser } from '../types/user';
@@ -97,6 +98,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     getTableStatus,
     getTableOrder,
     clearTable,
+    clearAllTables,
     updateOrder,
     markOrderAsChecked,
     clearDuplicateOrders
@@ -211,11 +213,14 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const prevOrdersCountRef = React.useRef<number>(orders.length);
   const lastAlertedOrderIdRef = React.useRef<string | null>(null);
 
-  // Phân loại danh sách đơn hàng theo 4 bước quy trình vận hành quán
-  const uncheckedOrders = useMemo(() => orders.filter(o => !o.checked && o.status === 'pending'), [orders]);
-  const preparingOrders = useMemo(() => orders.filter(o => o.status === 'preparing'), [orders]);
-  const readyOrders = useMemo(() => orders.filter(o => o.status === 'ready'), [orders]);
-  const completedOrders = useMemo(() => orders.filter(o => o.status === 'completed'), [orders]);
+  // Danh sách toàn bộ đơn hàng được sắp xếp ĐƠN MỚI NHẤT LÊN ĐẦU TIÊN
+  const sortedOrders = useMemo(() => sortOrdersNewestFirst(orders), [orders]);
+
+  // Phân loại danh sách đơn hàng theo 4 bước quy trình vận hành quán (luôn đưa đơn mới nhất lên đầu)
+  const uncheckedOrders = useMemo(() => sortedOrders.filter(o => !o.checked && o.status === 'pending'), [sortedOrders]);
+  const preparingOrders = useMemo(() => sortedOrders.filter(o => o.status === 'preparing'), [sortedOrders]);
+  const readyOrders = useMemo(() => sortedOrders.filter(o => o.status === 'ready'), [sortedOrders]);
+  const completedOrders = useMemo(() => sortedOrders.filter(o => o.status === 'completed'), [sortedOrders]);
 
   // Thông tin đơn hàng đang nạp tại quầy POS
   const loadedOrder = useMemo(() => {
@@ -657,6 +662,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       id: orderIdPrefix + Date.now().toString().slice(-6),
       orderNumber: orders.length + 101,
       createdAt: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+      createdTimestamp: Date.now(),
       customer: {
         name: finalName || (posServingType === 'dine-in' ? `Khách ${posTableNumber}` : 'Khách mua tại quầy'),
         phone: finalPhone,
@@ -731,6 +737,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       id: 'TAB-' + Date.now().toString().slice(-6),
       orderNumber: orders.length + 101,
       createdAt: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+      createdTimestamp: Date.now(),
       customer: {
         name: finalName,
         phone: finalPhone,
@@ -763,20 +770,23 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     setPosCustomerName('');
   };
 
-  // Lọc đơn hàng KDS
-  const filteredOrders = orders.filter((o) => {
-    const matchesType =
-      filterType === 'all' ||
-      (filterType === 'delivery' && o.orderType === 'delivery') ||
-      (filterType === 'dine-in' && (o.orderType === 'dine-in' || o.orderType === 'takeaway'));
+  // Lọc đơn hàng KDS - luôn đưa đơn mới nhất lên đầu tiên
+  const filteredOrders = useMemo(() => {
+    const list = sortedOrders.filter((o) => {
+      const matchesType =
+        filterType === 'all' ||
+        (filterType === 'delivery' && o.orderType === 'delivery') ||
+        (filterType === 'dine-in' && (o.orderType === 'dine-in' || o.orderType === 'takeaway'));
 
-    const matchesSearch =
-      o.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      o.customer.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (o.tableNumber && o.tableNumber.toLowerCase().includes(searchQuery.toLowerCase()));
+      const matchesSearch =
+        o.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        o.customer.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (o.tableNumber && o.tableNumber.toLowerCase().includes(searchQuery.toLowerCase()));
 
-    return matchesType && matchesSearch;
-  });
+      return matchesType && matchesSearch;
+    });
+    return sortOrdersNewestFirst(list);
+  }, [sortedOrders, filterType, searchQuery]);
 
   // ==========================================
   // DỮ LIỆU BÁO CÁO DOANH THU & TÀI CHÍNH
@@ -2211,6 +2221,22 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
                   <span>Đang Ngồi Uống ({occupiedPaidCount})</span>
                 </span>
+
+                {totalOccupiedCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (confirm(`Xác nhận dọn dẹp và trả tất cả ${totalOccupiedCount} bàn đang có khách về trạng thái BÀN TRỐNG?`)) {
+                        clearAllTables();
+                        playSuccessSound(true);
+                      }
+                    }}
+                    className="px-2.5 py-1 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-[11px] flex items-center gap-1 shadow-xs transition-colors cursor-pointer"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Dọn Tất Cả Bàn Trống</span>
+                  </button>
+                )}
               </div>
 
               <div className="text-[11px] text-[#69776E]">
@@ -3006,7 +3032,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#F0EAE0]">
-                    {orders.slice(0, 15).map((o) => (
+                    {sortedOrders.slice(0, 15).map((o) => (
                       <tr key={o.id} className="hover:bg-[#FDFBF7]">
                         <td className="p-3 font-mono font-bold text-[#322821]">#{o.orderNumber}</td>
                         <td className="p-3 text-[#6A7870] font-mono">{o.createdAt}</td>

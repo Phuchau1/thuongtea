@@ -10,6 +10,7 @@ import {
   onSnapshot
 } from 'firebase/firestore';
 import type { PosOrder } from '../types/pos';
+import { sortOrdersNewestFirst } from '../types/pos';
 import type { MemberUser } from '../types/user';
 import type { FruitTeaItem, Topping, DiningTable } from '../types/tea';
 import type { StaffMember, AttendanceRecord } from '../types/staff';
@@ -24,11 +25,12 @@ export function apiListenOrders(callback: (orders: PosOrder[]) => void): () => v
     return onSnapshot(collection(db, 'orders'), (snap) => {
       const orders: PosOrder[] = [];
       snap.forEach((d) => orders.push(d.data() as PosOrder));
-      if (orders.length > 0) {
+      const sorted = sortOrdersNewestFirst(orders);
+      if (sorted.length > 0) {
         try {
-          localStorage.setItem('AN_TRA_ORDERS', JSON.stringify(orders));
+          localStorage.setItem('AN_TRA_ORDERS', JSON.stringify(sorted));
         } catch {}
-        callback(orders);
+        callback(sorted);
       }
     }, (err) => {
       console.debug('Firestore onSnapshot listen error:', err);
@@ -50,17 +52,18 @@ export async function apiGetOrders(): Promise<PosOrder[]> {
       orders.push(d.data() as PosOrder);
     });
     if (orders.length > 0) {
+      const sorted = sortOrdersNewestFirst(orders);
       try {
-        localStorage.setItem('AN_TRA_ORDERS', JSON.stringify(orders));
+        localStorage.setItem('AN_TRA_ORDERS', JSON.stringify(sorted));
       } catch {}
-      return orders;
+      return sorted;
     }
   } catch (err) {
     console.debug('Firebase get orders fallback to localStorage', err);
   }
   try {
     const saved = localStorage.getItem('AN_TRA_ORDERS');
-    return saved ? JSON.parse(saved) : [];
+    return saved ? sortOrdersNewestFirst(JSON.parse(saved)) : [];
   } catch {
     return [];
   }
@@ -72,7 +75,12 @@ export async function apiGetOrders(): Promise<PosOrder[]> {
 export async function apiCreateOrder(order: PosOrder): Promise<PosOrder> {
   try {
     const docId = order.id || `order-${Date.now()}`;
-    await setDoc(doc(db, 'orders', docId), order);
+    const orderWithTs: PosOrder = {
+      ...order,
+      createdTimestamp: order.createdTimestamp || Date.now(),
+    };
+    await setDoc(doc(db, 'orders', docId), orderWithTs);
+    return orderWithTs;
   } catch (err) {
     console.debug('Firebase create order fallback', err);
   }
@@ -150,15 +158,49 @@ export async function apiClearDuplicateOrders(): Promise<PosOrder[]> {
  */
 export async function apiClearTable(tableNumber: string): Promise<void> {
   try {
+    const cleanTbl = (tableNumber || '').trim().toLowerCase();
     const snap = await getDocs(collection(db, 'orders'));
+    const updates: Promise<void>[] = [];
     for (const docSnap of snap.docs) {
       const data = docSnap.data() as PosOrder;
-      if (data.tableNumber === tableNumber && data.status !== 'completed' && data.status !== 'cancelled') {
-        await updateDoc(doc(db, 'orders', docSnap.id), { tableCleared: true });
+      const orderTbl = (data.tableNumber || data.customer?.tableNumber || '').trim().toLowerCase();
+      // Bỏ điều kiện data.status !== 'completed' để dọn được cả bàn đã thanh toán / đã hoàn tất
+      if (orderTbl === cleanTbl && !data.tableCleared && data.status !== 'cancelled') {
+        updates.push(
+          updateDoc(doc(db, 'orders', docSnap.id), { 
+            tableCleared: true,
+            paymentStatus: 'paid'
+          })
+        );
       }
     }
+    await Promise.all(updates);
   } catch (err) {
     console.debug('Firebase clear table fallback', err);
+  }
+}
+
+/**
+ * Dọn trả tất cả bàn trống trên Firestore
+ */
+export async function apiClearAllTables(): Promise<void> {
+  try {
+    const snap = await getDocs(collection(db, 'orders'));
+    const updates: Promise<void>[] = [];
+    for (const docSnap of snap.docs) {
+      const data = docSnap.data() as PosOrder;
+      if (data.tableNumber && !data.tableCleared && data.status !== 'cancelled') {
+        updates.push(
+          updateDoc(doc(db, 'orders', docSnap.id), { 
+            tableCleared: true,
+            paymentStatus: 'paid'
+          })
+        );
+      }
+    }
+    await Promise.all(updates);
+  } catch (err) {
+    console.debug('Firebase clear all tables fallback', err);
   }
 }
 

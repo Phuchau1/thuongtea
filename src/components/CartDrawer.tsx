@@ -223,6 +223,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
       id: orderId,
       orderNumber: orderNum,
       createdAt: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+      createdTimestamp: Date.now(),
       customer: { 
         ...customer, 
         name: finalName,
