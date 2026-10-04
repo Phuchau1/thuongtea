@@ -489,7 +489,7 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   }, []);
 
-  // Đồng bộ Realtime từ Firebase Firestore (WebSocket realtime không chiếm băng thông)
+  // Đồng bộ Realtime từ MongoDB Atlas Backend qua SSE (Server-Sent Events) không giật lag
   useEffect(() => {
     const unsub = apiListenOrders((newOrders) => {
       if (newOrders && newOrders.length > 0) {

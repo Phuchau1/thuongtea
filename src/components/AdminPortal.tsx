@@ -2673,7 +2673,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                         </button>
                         <button
                           onClick={() => {
-                            if (window.confirm(`Bạn có chắc chắn muốn xóa vĩnh viễn đơn #${order.id}? Hành động này sẽ xóa dữ liệu trên hệ thống và Firebase.`)) {
+                            if (window.confirm(`Bạn có chắc chắn muốn xóa vĩnh viễn đơn #${order.id}? Hành động này sẽ xóa dữ liệu trên hệ thống và cơ sở dữ liệu MongoDB Atlas.`)) {
                               deleteOrder(order.id);
                             }
                           }}
@@ -3755,7 +3755,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
                               <button
                                 onClick={() => {
-                                  if (window.confirm(`Bạn có chắc chắn muốn xóa khách hàng "${m.name}" (${m.phone})? Dữ liệu điểm thưởng sẽ bị xóa vĩnh viễn trên Firebase.`)) {
+                                  if (window.confirm(`Bạn có chắc chắn muốn xóa khách hàng "${m.name}" (${m.phone})? Dữ liệu điểm thưởng sẽ bị xóa vĩnh viễn trên cơ sở dữ liệu MongoDB Atlas.`)) {
                                     deleteMember(m.phone);
                                     playClickSound(true);
                                   }
