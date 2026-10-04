@@ -9,7 +9,7 @@ import {
   UserPlus, CheckCircle2, FileText,
   Volume2, VolumeX, Bell,
   ArrowRight, Coffee, Columns3, CheckCheck,
-  Tag
+  Tag, ShoppingCart, ArrowLeft, Menu
 } from 'lucide-react';
 import { useOrders } from '../context/OrderContext';
 import type { PosOrder } from '../types/pos';
@@ -182,6 +182,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
   // Lọc doanh thu thời gian
   const [revenueTimeFilter, setRevenueTimeFilter] = useState<'all' | 'today' | 'week' | 'month'>('all');
+
+  // Chế độ xem POS trên di động: 'menu' (chọn món) hoặc 'cart' (xem giỏ & thanh toán)
+  const [mobilePosView, setMobilePosView] = useState<'menu' | 'cart'>('menu');
+  // Drawer menu mở rộng trên di động (truy cập các mục: menu, staff, customers, coupons, attendance, QR, v.v.)
+  const [isMobileMenuDrawerOpen, setIsMobileMenuDrawerOpen] = useState<boolean>(false);
 
   // Chấm công nhanh ở tab attendance
   const [clockInPin, setClockInPin] = useState<string>(currentStaff?.code || '');
@@ -898,50 +903,50 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     <div className="min-h-screen bg-[#FAF7F2] text-[#222B25] flex flex-col font-sans">
       {/* HEADER QUẢN TRỊ TRUNG TÂM */}
       <header className="sticky top-0 z-40 bg-[#322821] text-white shadow-md print:hidden">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 h-14 sm:h-16 flex items-center justify-between gap-2 sm:gap-4">
           
           {/* Logo & Tên Hệ Thống */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <img 
               src="/logo-icon-white.png" 
               alt="Thượng POS Logo" 
-              className="w-10 h-10 object-contain p-1 rounded-2xl bg-white/10 shadow-inner" 
+              className="w-8 h-8 sm:w-10 sm:h-10 object-contain p-0.5 sm:p-1 rounded-xl sm:rounded-2xl bg-white/10 shadow-inner shrink-0" 
             />
-            <div>
-              <div className="font-display font-bold text-lg leading-tight flex items-center gap-2">
-                <span>THƯỢNG POS</span>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/30 text-amber-200 border border-amber-400/40">
+            <div className="min-w-0">
+              <div className="font-display font-bold text-sm sm:text-lg leading-tight flex items-center gap-1.5 sm:gap-2">
+                <span className="truncate">THƯỢNG POS</span>
+                <span className="hidden sm:inline text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/30 text-amber-200 border border-amber-400/40">
                   EST 2026
                 </span>
               </div>
-              <div className="text-[11px] text-[#D8CDC4] font-mono">
-                {currentTime} • Kết nối Quầy & Bếp Realtime
+              <div className="text-[10px] sm:text-[11px] text-[#D8CDC4] font-mono truncate">
+                {currentTime} <span className="hidden sm:inline">• Quầy & Bếp Realtime</span>
               </div>
             </div>
           </div>
 
           {/* Nhân Viên Đang Đăng Nhập & Chấm Công */}
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             {/* Thẻ nhân viên hiện tại */}
             <div 
               onClick={() => setIsStaffSwitcherOpen(true)}
-              className="flex items-center gap-2 bg-white/10 hover:bg-white/20 border border-white/15 px-3 py-1.5 rounded-2xl cursor-pointer transition-colors"
+              className="flex items-center gap-1.5 sm:gap-2 bg-white/10 hover:bg-white/20 border border-white/15 px-2 sm:px-3 py-1 sm:py-1.5 rounded-xl sm:rounded-2xl cursor-pointer transition-colors"
               title="Bấm để đổi ca / đổi nhân viên"
             >
-              <span className="text-xl">{currentStaff?.avatar || '👨‍💼'}</span>
+              <span className="text-base sm:text-xl">{currentStaff?.avatar || '👨‍💼'}</span>
               <div className="text-left hidden sm:block">
                 <div className="text-xs font-bold leading-tight flex items-center gap-1.5">
                   <span>{currentStaff?.name || 'Quản Lý'}</span>
                   <span className="font-mono text-[10px] text-yellow-300">[{currentStaff?.code || '1234'}]</span>
                 </div>
                 <div className="text-[10px] text-emerald-200">
-                  {currentStaff?.roleTitle || 'Quản Lý Cấp Cao'}
+                  {currentStaff?.roleTitle || 'Quản Lý'}
                 </div>
               </div>
             </div>
 
-            {/* Nút Bật/Tắt & Thử Chuông POS */}
-            <div className="flex items-center gap-1 bg-white/10 p-0.5 rounded-xl border border-white/15">
+            {/* Nút Bật/Tắt & Thử Chuông POS Desktop */}
+            <div className="hidden sm:flex items-center gap-1 bg-white/10 p-0.5 rounded-xl border border-white/15">
               <button
                 type="button"
                 onClick={handleToggleSound}
@@ -967,6 +972,18 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               </button>
             </div>
 
+            {/* Chuông Mobile */}
+            <button
+              type="button"
+              onClick={handleToggleSound}
+              className={`sm:hidden p-1.5 rounded-xl border border-white/15 transition-colors ${
+                posSoundEnabled ? 'bg-amber-500/80 text-white' : 'bg-white/10 text-stone-400'
+              }`}
+              title={posSoundEnabled ? 'Chuông POS BẬT' : 'Chuông POS TẮT'}
+            >
+              {posSoundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            </button>
+
             {/* Nút Nhận & Check Đơn Nhanh */}
             <button
               type="button"
@@ -980,11 +997,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   setShowCheckOrderDrawer(true);
                 }
               }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold shadow-md transition-all active:scale-95 cursor-pointer"
+              className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold shadow-md transition-all active:scale-95 cursor-pointer"
               title="Nhận đơn và check kiểm tra đơn hàng mới"
             >
               <Bell className="w-3.5 h-3.5 animate-bounce" />
-              <span>Check Đơn</span>
+              <span className="hidden sm:inline">Check Đơn</span>
               {uncheckedOrders.length > 0 && (
                 <span className="w-5 h-5 rounded-full bg-red-600 text-white font-black text-[10px] flex items-center justify-center border border-white">
                   {uncheckedOrders.length}
@@ -996,28 +1013,28 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             {userRole === 'admin' && (
               <button
                 onClick={() => setIsQrModalOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold transition-colors border border-white/15"
+                className="hidden md:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold transition-colors border border-white/15"
                 title="Tạo và in tem mica mã QR cho 12 bàn"
               >
                 <QrCode className="w-3.5 h-3.5 text-yellow-300" />
-                <span className="hidden md:inline">Mã QR Bàn</span>
+                <span>Mã QR Bàn</span>
               </button>
             )}
 
             {/* Về Web Khách */}
             <button
               onClick={onBackToStore}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold transition-colors border border-white/15"
+              className="hidden md:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold transition-colors border border-white/15"
               title="Mở giao diện khách hàng"
             >
               <ExternalLink className="w-3.5 h-3.5 text-emerald-300" />
-              <span className="hidden sm:inline">Trang Khách</span>
+              <span>Trang Khách</span>
             </button>
 
             {/* Đăng xuất khỏi Admin */}
             <button
               onClick={onLogout}
-              className="w-9 h-9 rounded-xl bg-red-500/20 hover:bg-red-500/40 text-red-200 flex items-center justify-center transition-colors border border-red-400/30"
+              className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-red-500/20 hover:bg-red-500/40 text-red-200 flex items-center justify-center transition-colors border border-red-400/30"
               title="Đăng xuất khỏi quầy"
             >
               <LogOut className="w-4 h-4" />
@@ -1305,82 +1322,141 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       </div>
 
       {/* NỘI DUNG CHÍNH CÁC TAB */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-6 pb-28 md:pb-8">
         
         {/* ======================================================== */}
         {/* TAB 1: BÁN HÀNG THU NGÂN (POS CASHIER)                   */}
         {/* ======================================================== */}
         {activeTab === 'cashier' && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-            {/* CỘT TRÁI: THỰC ĐƠN CHỌN MÓN NHANH (7 CỘT) */}
-            <div className="lg:col-span-7 bg-white rounded-3xl p-5 border border-[#DDD5C5] shadow-xs flex flex-col">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-                <div className="relative flex-1">
-                  <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#88968E]" />
-                  <input
-                    type="text"
-                    placeholder="Tìm tên món, loại quả..."
-                    value={posSearch}
-                    onChange={(e) => setPosSearch(e.target.value)}
-                    className="w-full bg-[#FAF7F2] border border-[#DDD6C8] rounded-xl pl-9 pr-3 py-2 text-xs font-semibold focus:outline-none focus:border-[#322821]"
-                  />
+          <div className="space-y-3 sm:space-y-4">
+            {/* MOBILE VIEW TOGGLE TABS (MENU vs GIỎ HÀNG) */}
+            <div className="lg:hidden flex bg-white p-1 rounded-2xl border border-[#DDD6C8] shadow-2xs">
+              <button
+                type="button"
+                onClick={() => setMobilePosView('menu')}
+                className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                  mobilePosView === 'menu'
+                    ? 'bg-[#322821] text-white shadow-xs'
+                    : 'text-[#55635B] hover:bg-[#FAF7F2]'
+                }`}
+              >
+                <span>🥤 Chọn Món</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                  mobilePosView === 'menu' ? 'bg-white/20 text-white' : 'bg-stone-200 text-stone-700'
+                }`}>
+                  {products.length}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setMobilePosView('cart')}
+                className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                  mobilePosView === 'cart'
+                    ? 'bg-[#D95829] text-white shadow-xs'
+                    : 'text-[#55635B] hover:bg-[#FAF7F2]'
+                }`}
+              >
+                <ShoppingCart className="w-3.5 h-3.5" />
+                <span>Giỏ & Thanh Toán</span>
+                {posCart.length > 0 && (
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                    mobilePosView === 'cart' ? 'bg-white text-[#D95829]' : 'bg-[#D95829] text-white'
+                  }`}>
+                    {posCart.reduce((s, it) => s + it.quantity, 0)}
+                  </span>
+                )}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+              {/* CỘT TRÁI: THỰC ĐƠN CHỌN MÓN NHANH (7 CỘT) */}
+              <div className={`lg:col-span-7 bg-white rounded-3xl p-3.5 sm:p-5 border border-[#DDD5C5] shadow-xs flex flex-col ${
+                mobilePosView === 'cart' ? 'hidden lg:flex' : 'flex'
+              }`}>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#88968E]" />
+                    <input
+                      type="text"
+                      placeholder="Tìm tên món, loại quả..."
+                      value={posSearch}
+                      onChange={(e) => setPosSearch(e.target.value)}
+                      className="w-full bg-[#FAF7F2] border border-[#DDD6C8] rounded-xl pl-9 pr-3 py-2 text-xs font-semibold focus:outline-none focus:border-[#322821]"
+                    />
+                  </div>
+
+                  {/* Danh mục nhanh */}
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                    {['all', 'signature', 'fruit-tea', 'milk-tea'].map((cat) => (
+                      <button
+                        key={cat}
+                        onClick={() => setPosCategory(cat)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-colors ${
+                          posCategory === cat ? 'bg-[#322821] text-white' : 'bg-[#FAF7F2] text-[#55635B] hover:bg-[#EAE3D2]'
+                        }`}
+                      >
+                        {cat === 'all' ? 'Tất cả món' : cat === 'signature' ? 'Signature' : cat === 'milk-tea' ? 'Trà Sữa' : 'Trái cây'}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
-                {/* Danh mục nhanh */}
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-                  {['all', 'signature', 'fruit-tea', 'milk-tea'].map((cat) => (
+                {/* Lưới sản phẩm để bấm chọn nhanh */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 max-h-[calc(100vh-270px)] overflow-y-auto pr-1">
+                  {products.filter(t => 
+                    (posCategory === 'all' || t.category === posCategory) &&
+                    (t.name.toLowerCase().includes(posSearch.toLowerCase()) || t.tagline.toLowerCase().includes(posSearch.toLowerCase()))
+                  ).map((tea) => (
                     <button
-                      key={cat}
-                      onClick={() => setPosCategory(cat)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-colors ${
-                        posCategory === cat ? 'bg-[#322821] text-white' : 'bg-[#FAF7F2] text-[#55635B] hover:bg-[#EAE3D2]'
-                      }`}
+                      key={tea.id}
+                      onClick={() => handleAddToCartPos(tea)}
+                      className="p-3 rounded-2xl bg-[#FAF7F2] hover:bg-emerald-50/70 border border-[#EAE3D2] hover:border-[#322821] transition-all text-left flex flex-col justify-between group active:scale-95 shadow-2xs"
                     >
-                      {cat === 'all' ? 'Tất cả món' : cat === 'signature' ? 'Signature' : cat === 'milk-tea' ? 'Trà Sữa' : 'Trái cây'}
+                      <div className="h-24 flex items-center justify-center mb-1 relative">
+                        <img
+                          src={tea.image}
+                          alt={tea.name}
+                          className="max-h-full w-auto object-contain group-hover:scale-105 transition-transform"
+                        />
+                      </div>
+                      <div>
+                        <div className="font-bold text-xs text-[#322821] line-clamp-1 leading-snug">
+                          {tea.name}
+                        </div>
+                        <div className="font-sans font-bold text-xs text-[#D95829] mt-0.5">
+                          {formatVND(tea.price)}
+                        </div>
+                      </div>
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* Lưới sản phẩm để bấm chọn nhanh */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 max-h-[calc(100vh-270px)] overflow-y-auto pr-1">
-                {products.filter(t => 
-                  (posCategory === 'all' || t.category === posCategory) &&
-                  (t.name.toLowerCase().includes(posSearch.toLowerCase()) || t.tagline.toLowerCase().includes(posSearch.toLowerCase()))
-                ).map((tea) => (
-                  <button
-                    key={tea.id}
-                    onClick={() => handleAddToCartPos(tea)}
-                    className="p-3 rounded-2xl bg-[#FAF7F2] hover:bg-emerald-50/70 border border-[#EAE3D2] hover:border-[#322821] transition-all text-left flex flex-col justify-between group active:scale-95 shadow-2xs"
-                  >
-                    <div className="h-24 flex items-center justify-center mb-1 relative">
-                      <img
-                        src={tea.image}
-                        alt={tea.name}
-                        className="max-h-full w-auto object-contain group-hover:scale-105 transition-transform"
-                      />
-                    </div>
-                    <div>
-                      <div className="font-bold text-xs text-[#322821] line-clamp-1 leading-snug">
-                        {tea.name}
-                      </div>
-                      <div className="font-sans font-bold text-xs text-[#D95829] mt-0.5">
-                        {formatVND(tea.price)}
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
+              {/* CỘT PHẢI: MÁY POS BÁN HÀNG & THU NGÂN CHUẨN RETAIL */}
+              <div className={`lg:col-span-5 bg-white rounded-3xl p-3.5 sm:p-5 border border-[#DDD5C5] shadow-md flex flex-col justify-between min-h-[580px] sm:min-h-[620px] ${
+                mobilePosView === 'menu' ? 'hidden lg:flex' : 'flex'
+              }`}>
+                <div>
+                  {/* Nút quay lại chọn món trên di động */}
+                  <div className="lg:hidden mb-3 flex items-center justify-between pb-2 border-b border-[#F0EAE0]">
+                    <button
+                      type="button"
+                      onClick={() => setMobilePosView('menu')}
+                      className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 font-bold text-xs flex items-center gap-1.5 active:scale-95 transition-all"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                      <span>Thêm món khác</span>
+                    </button>
+                    <span className="text-xs font-mono font-bold text-[#D95829]">
+                      {posCart.reduce((s, it) => s + it.quantity, 0)} ly • {formatVND(posGrandTotal)}
+                    </span>
+                  </div>
 
-            {/* CỘT PHẢI: MÁY POS BÁN HÀNG & THU NGÂN CHUẨN RETAIL */}
-            <div className="lg:col-span-6 xl:col-span-5 bg-white rounded-3xl p-4 sm:p-5 border border-[#DDD5C5] shadow-md flex flex-col justify-between min-h-[620px]">
-              <div>
-                {/* 1. TÌM KIẾM KHÁCH HÀNG (THEO TÊN HOẶC SĐT) & TÍCH ĐIỂM VĨNH VIỄN */}
-                <div className="mb-3 relative">
-                  <div className="flex gap-1.5 items-center">
-                    <div className="relative flex-1">
-                      <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[#8C9890]" />
+                  {/* 1. TÌM KIẾM KHÁCH HÀNG (THEO TÊN HOẶC SĐT) & TÍCH ĐIỂM VĨNH VIỄN */}
+                  <div className="mb-3 relative">
+                    <div className="flex gap-1.5 items-center">
+                      <div className="relative flex-1">
+                        <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[#8C9890]" />
                       <input
                         type="text"
                         placeholder="Tìm Tên khách (VD: Hậu, Lan) hoặc Số ĐT..."
@@ -2194,7 +2270,32 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               </div>
             </div>
           </div>
-        )}
+
+          {/* FLOATING QUICK CART BAR FOR MOBILE (Khi đang ở tab Menu mà có món trong giỏ) */}
+          {posCart.length > 0 && mobilePosView === 'menu' && (
+            <div className="lg:hidden fixed bottom-16 left-3 right-3 z-30 bg-[#261E18] text-white p-3 rounded-2xl shadow-2xl border border-white/20 flex items-center justify-between animate-in fade-in slide-in-from-bottom-2 duration-200">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-[#D95829] text-white flex items-center justify-center font-black text-xs shrink-0 shadow-xs">
+                  {posCart.reduce((s, it) => s + it.quantity, 0)}
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[11px] text-amber-200/90 font-medium truncate">Giỏ hàng tạm tính</div>
+                  <div className="font-sans font-black text-sm text-white truncate">{formatVND(posGrandTotal)}</div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setMobilePosView('cart')}
+                className="px-3.5 py-2 rounded-xl bg-[#D95829] hover:bg-[#b5451d] text-white text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-md active:scale-95 shrink-0 cursor-pointer"
+              >
+                <span>Thanh Toán</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
         {/* ======================================================== */}
         {/* TAB 2: SƠ ĐỒ BÀN (TABLES MAP)                            */}
@@ -2247,19 +2348,19 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             </div>
 
             {/* Thanh thống kê trạng thái các bàn */}
-            <div className="bg-white p-3.5 rounded-2xl border border-[#DDD5C5] mb-4 flex items-center justify-between flex-wrap gap-3 text-xs shadow-xs">
-              <div className="flex items-center gap-4">
+            <div className="bg-white p-3 sm:p-3.5 rounded-2xl border border-[#DDD5C5] mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-xs">
+              <div className="flex items-center gap-2.5 sm:gap-4 flex-wrap">
                 <span className="flex items-center gap-1.5 font-bold text-emerald-800">
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-600" />
                   <span>Bàn Trống ({Math.max(0, tables.length - totalOccupiedCount)})</span>
                 </span>
                 <span className="flex items-center gap-1.5 font-bold text-amber-800">
                   <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
-                  <span>Chờ Tính Tiền ({occupiedUnpaidCount})</span>
+                  <span>Chờ TT ({occupiedUnpaidCount})</span>
                 </span>
                 <span className="flex items-center gap-1.5 font-bold text-blue-800">
                   <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
-                  <span>Đang Ngồi Uống ({occupiedPaidCount})</span>
+                  <span>Đang Ngồi ({occupiedPaidCount})</span>
                 </span>
 
                 {totalOccupiedCount > 0 && (
@@ -2274,18 +2375,18 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     className="px-2.5 py-1 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-[11px] flex items-center gap-1 shadow-xs transition-colors cursor-pointer"
                   >
                     <RotateCcw className="w-3 h-3" />
-                    <span>Dọn Tất Cả Bàn Trống</span>
+                    <span>Dọn Tất Cả Bàn</span>
                   </button>
                 )}
               </div>
 
               <div className="text-[11px] text-[#69776E]">
-                💡 Bàn đang có khách sẽ <strong>tự động bị khóa</strong> trên trang web khách hàng cho đến khi bấm <strong>"Trả Bàn Trống"</strong>.
+                💡 Bàn đang có khách sẽ <strong>tự động bị khóa</strong> trên trang web khách hàng.
               </div>
             </div>
 
             {/* Lưới các bàn */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3.5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5 sm:gap-3.5">
               {tables.map((tableItem) => {
                 const tbl = tableItem.name;
                 const status = getTableStatus(tbl);
@@ -2431,36 +2532,36 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               </div>
 
               {/* Bộ lọc đơn & Tìm kiếm */}
-              <div className="flex items-center gap-2">
-                <div className="flex items-center bg-white p-1 rounded-xl border border-[#DDD6C8] text-xs font-semibold">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
+                <div className="flex items-center bg-white p-1 rounded-xl border border-[#DDD6C8] text-xs font-semibold overflow-x-auto scrollbar-none">
                   <button
                     onClick={() => setFilterType('all')}
-                    className={`px-3 py-1 rounded-lg transition-colors ${filterType === 'all' ? 'bg-[#322821] text-white' : 'text-[#627068]'}`}
+                    className={`px-3 py-1.5 rounded-lg whitespace-nowrap transition-colors ${filterType === 'all' ? 'bg-[#322821] text-white' : 'text-[#627068]'}`}
                   >
                     Tất cả ({orders.length})
                   </button>
                   <button
                     onClick={() => setFilterType('dine-in')}
-                    className={`px-3 py-1 rounded-lg transition-colors ${filterType === 'dine-in' ? 'bg-[#322821] text-white' : 'text-[#627068]'}`}
+                    className={`px-3 py-1.5 rounded-lg whitespace-nowrap transition-colors ${filterType === 'dine-in' ? 'bg-[#322821] text-white' : 'text-[#627068]'}`}
                   >
                     🪑 Tại Bàn ({orders.filter(o => o.orderType === 'dine-in').length})
                   </button>
                   <button
                     onClick={() => setFilterType('delivery')}
-                    className={`px-3 py-1 rounded-lg transition-colors ${filterType === 'delivery' ? 'bg-[#322821] text-white' : 'text-[#627068]'}`}
+                    className={`px-3 py-1.5 rounded-lg whitespace-nowrap transition-colors ${filterType === 'delivery' ? 'bg-[#322821] text-white' : 'text-[#627068]'}`}
                   >
                     🛵 Giao Đi ({orders.filter(o => o.orderType === 'delivery').length})
                   </button>
                 </div>
 
-                <div className="relative">
+                <div className="relative flex-1 sm:flex-initial">
                   <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[#88968E]" />
                   <input
                     type="text"
                     placeholder="Tìm mã đơn, bàn..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="bg-white border border-[#DDD6C8] rounded-xl pl-8 pr-3 py-1.5 text-xs text-[#222B25] placeholder-[#909D95] focus:outline-none focus:border-[#322821] w-36 sm:w-44"
+                    className="w-full bg-white border border-[#DDD6C8] rounded-xl pl-8 pr-3 py-1.5 text-xs text-[#222B25] placeholder-[#909D95] focus:outline-none focus:border-[#322821] sm:w-44"
                   />
                 </div>
               </div>
@@ -2912,60 +3013,60 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             </div>
 
             {/* 4 THẺ CHỈ SỐ KPI CHÍNH */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-              <div className="bg-white p-5 rounded-3xl border border-[#DDD5C5] shadow-xs">
-                <div className="text-xs font-bold text-[#69776E] mb-1 flex items-center justify-between">
-                  <span>TỔNG DOANH THU ĐÃ THU</span>
-                  <span className="p-1 rounded-lg bg-emerald-100 text-emerald-800">💰</span>
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 mb-6">
+              <div className="bg-white p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl border border-[#DDD5C5] shadow-xs">
+                <div className="text-[11px] sm:text-xs font-bold text-[#69776E] mb-1 flex items-center justify-between">
+                  <span className="truncate">DOANH THU ĐÃ THU</span>
+                  <span className="p-1 rounded-lg bg-emerald-100 text-emerald-800 shrink-0">💰</span>
                 </div>
-                <div className="font-sans font-extrabold text-2xl text-[#322821]">
+                <div className="font-sans font-extrabold text-base sm:text-2xl text-[#322821] truncate">
                   {formatVND(revenueStats.totalRevenue)}
                 </div>
-                <div className="text-[11px] text-emerald-700 mt-1 font-medium">
-                  Từ {revenueStats.totalOrdersCount} đơn hoàn thành
+                <div className="text-[10px] sm:text-[11px] text-emerald-700 mt-1 font-medium truncate">
+                  {revenueStats.totalOrdersCount} đơn hoàn thành
                 </div>
               </div>
 
-              <div className="bg-white p-5 rounded-3xl border border-[#DDD5C5] shadow-xs">
-                <div className="text-xs font-bold text-[#69776E] mb-1 flex items-center justify-between">
-                  <span>GIÁ TRỊ ĐƠN TRUNG BÌNH (AOV)</span>
-                  <span className="p-1 rounded-lg bg-blue-100 text-blue-800">📈</span>
+              <div className="bg-white p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl border border-[#DDD5C5] shadow-xs">
+                <div className="text-[11px] sm:text-xs font-bold text-[#69776E] mb-1 flex items-center justify-between">
+                  <span className="truncate">TRUNG BÌNH (AOV)</span>
+                  <span className="p-1 rounded-lg bg-blue-100 text-blue-800 shrink-0">📈</span>
                 </div>
-                <div className="font-sans font-extrabold text-2xl text-blue-800">
+                <div className="font-sans font-extrabold text-base sm:text-2xl text-blue-800 truncate">
                   {formatVND(revenueStats.aov)}
                 </div>
-                <div className="text-[11px] text-blue-600 mt-1 font-medium">
-                  Mức chi tiêu trung bình / khách
+                <div className="text-[10px] sm:text-[11px] text-blue-600 mt-1 font-medium truncate">
+                  Mức chi tiêu / khách
                 </div>
               </div>
 
-              <div className="bg-white p-5 rounded-3xl border border-[#DDD5C5] shadow-xs">
-                <div className="text-xs font-bold text-[#69776E] mb-1 flex items-center justify-between">
-                  <span>TIỀN MẶT VS CHUYỂN KHOẢN QR</span>
-                  <span className="p-1 rounded-lg bg-purple-100 text-purple-800">💳</span>
+              <div className="bg-white p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl border border-[#DDD5C5] shadow-xs col-span-2 sm:col-span-1">
+                <div className="text-[11px] sm:text-xs font-bold text-[#69776E] mb-1 flex items-center justify-between">
+                  <span className="truncate">TIỀN MẶT VS VIETQR</span>
+                  <span className="p-1 rounded-lg bg-purple-100 text-purple-800 shrink-0">💳</span>
                 </div>
-                <div className="text-xs space-y-1 font-mono font-bold mt-2">
+                <div className="text-xs space-y-1 font-mono font-bold mt-1.5 sm:mt-2">
                   <div className="flex justify-between text-emerald-800">
                     <span>💵 Tiền mặt:</span>
-                    <span>{formatVND(revenueStats.cashTotal)} ({revenueStats.cashCount} đơn)</span>
+                    <span className="truncate">{formatVND(revenueStats.cashTotal)}</span>
                   </div>
                   <div className="flex justify-between text-blue-800">
                     <span>📱 VietQR:</span>
-                    <span>{formatVND(revenueStats.qrTotal)} ({revenueStats.qrCount} đơn)</span>
+                    <span className="truncate">{formatVND(revenueStats.qrTotal)}</span>
                   </div>
                 </div>
               </div>
 
-              <div className="bg-white p-5 rounded-3xl border border-[#DDD5C5] shadow-xs">
-                <div className="text-xs font-bold text-[#69776E] mb-1 flex items-center justify-between">
-                  <span>ĐƠN CHỜ THANH TOÁN (TẠI BÀN)</span>
-                  <span className="p-1 rounded-lg bg-amber-100 text-amber-800">⏳</span>
+              <div className="bg-white p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl border border-[#DDD5C5] shadow-xs col-span-2 sm:col-span-1">
+                <div className="text-[11px] sm:text-xs font-bold text-[#69776E] mb-1 flex items-center justify-between">
+                  <span className="truncate">CHỜ THANH TOÁN</span>
+                  <span className="p-1 rounded-lg bg-amber-100 text-amber-800 shrink-0">⏳</span>
                 </div>
-                <div className="font-sans font-extrabold text-2xl text-amber-800">
+                <div className="font-sans font-extrabold text-base sm:text-2xl text-amber-800 truncate">
                   {formatVND(revenueStats.unpaidRevenue)}
                 </div>
-                <div className="text-[11px] text-amber-700 mt-1 font-medium">
-                  {revenueStats.unpaidCount} bàn đang ngồi chưa tính tiền
+                <div className="text-[10px] sm:text-[11px] text-amber-700 mt-1 font-medium truncate">
+                  {revenueStats.unpaidCount} bàn chưa tính tiền
                 </div>
               </div>
             </div>
@@ -5522,6 +5623,315 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* THANH ĐIỀU HƯỚNG DƯỚI ĐÁY CHO ĐIỆN THOẠI (STICKY BOTTOM NAVIGATION BAR) */}
+      <nav className="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-[#261E18]/95 backdrop-blur-md text-white border-t border-white/10 px-1 py-1.5 flex justify-around items-center shadow-2xl print:hidden">
+        {/* 1. Thu Ngân */}
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('cashier');
+            playClickSound(true);
+          }}
+          className={`flex-1 flex flex-col items-center justify-center py-1 px-0.5 rounded-xl transition-all relative ${
+            activeTab === 'cashier' ? 'text-amber-400 font-bold scale-105' : 'text-stone-400 hover:text-white'
+          }`}
+        >
+          <CreditCard className="w-5 h-5 mb-0.5" />
+          <span className="text-[10px]">Thu Ngân</span>
+          {posCart.length > 0 && (
+            <span className="absolute top-0.5 right-1/4 w-2 h-2 bg-amber-400 rounded-full animate-ping" />
+          )}
+        </button>
+
+        {/* 2. Sơ Đồ Bàn */}
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('tables');
+            playClickSound(true);
+          }}
+          className={`flex-1 flex flex-col items-center justify-center py-1 px-0.5 rounded-xl transition-all relative ${
+            activeTab === 'tables' ? 'text-amber-400 font-bold scale-105' : 'text-stone-400 hover:text-white'
+          }`}
+        >
+          <LayoutGrid className="w-5 h-5 mb-0.5" />
+          <span className="text-[10px]">Bàn</span>
+          {totalOccupiedCount > 0 && (
+            <span className="absolute top-0 right-1/4 px-1 min-w-3.5 h-3.5 rounded-full bg-amber-500 text-[#261E18] text-[9px] font-black flex items-center justify-center">
+              {totalOccupiedCount}
+            </span>
+          )}
+        </button>
+
+        {/* 3. Bếp KDS */}
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('kds');
+            playClickSound(true);
+          }}
+          className={`flex-1 flex flex-col items-center justify-center py-1 px-0.5 rounded-xl transition-all relative ${
+            activeTab === 'kds' ? 'text-amber-400 font-bold scale-105' : 'text-stone-400 hover:text-white'
+          }`}
+        >
+          <ChefHat className="w-5 h-5 mb-0.5" />
+          <span className="text-[10px]">Bếp Pha</span>
+          {orders.filter(o => o.status !== 'completed').length > 0 && (
+            <span className="absolute top-0 right-1/4 px-1 min-w-3.5 h-3.5 rounded-full bg-yellow-400 text-stone-900 text-[9px] font-black flex items-center justify-center">
+              {orders.filter(o => o.status !== 'completed').length}
+            </span>
+          )}
+        </button>
+
+        {/* 4. Doanh Thu */}
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('revenue');
+            playClickSound(true);
+          }}
+          className={`flex-1 flex flex-col items-center justify-center py-1 px-0.5 rounded-xl transition-all ${
+            activeTab === 'revenue' ? 'text-amber-400 font-bold scale-105' : 'text-stone-400 hover:text-white'
+          }`}
+        >
+          <BarChart3 className="w-5 h-5 mb-0.5" />
+          <span className="text-[10px]">Báo Cáo</span>
+        </button>
+
+        {/* 5. Menu Thêm */}
+        <button
+          type="button"
+          onClick={() => {
+            setIsMobileMenuDrawerOpen(true);
+            playClickSound(true);
+          }}
+          className={`flex-1 flex flex-col items-center justify-center py-1 px-0.5 rounded-xl transition-all relative ${
+            ['menu', 'staff', 'customers', 'coupons', 'attendance'].includes(activeTab) || isMobileMenuDrawerOpen
+              ? 'text-amber-400 font-bold scale-105'
+              : 'text-stone-400 hover:text-white'
+          }`}
+        >
+          <Menu className="w-5 h-5 mb-0.5" />
+          <span className="text-[10px]">Thêm</span>
+          {uncheckedOrders.length > 0 && (
+            <span className="absolute top-0.5 right-1/4 w-2 h-2 bg-red-500 rounded-full animate-bounce" />
+          )}
+        </button>
+      </nav>
+
+      {/* ACTION SHEET / DRAWER MENU MỞ RỘNG TRÊN DI ĐỘNG */}
+      {isMobileMenuDrawerOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs md:hidden animate-fadeIn">
+          <div className="fixed inset-0" onClick={() => setIsMobileMenuDrawerOpen(false)} />
+          <div className="relative w-full max-h-[85vh] bg-[#FAF7F2] rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl z-10 border border-[#DDD5C5] overflow-y-auto">
+            {/* Thanh kéo top */}
+            <div className="w-12 h-1.5 bg-stone-300 rounded-full mx-auto mb-3" />
+            
+            <div className="flex items-center justify-between pb-3 border-b border-[#EAE3D2] mb-3">
+              <div>
+                <h3 className="font-display font-bold text-base text-[#322821]">Menu Quản Trị POS</h3>
+                <p className="text-[11px] text-[#7A8780]">
+                  Nhân viên: <strong className="text-[#322821]">{currentStaff?.name}</strong> ({currentStaff?.roleTitle})
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsMobileMenuDrawerOpen(false)}
+                className="p-1.5 rounded-xl bg-stone-200/80 hover:bg-stone-300 text-stone-600 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Lưới các chức năng quản trị */}
+            <div className="grid grid-cols-2 gap-2.5 mb-4">
+              {/* Check đơn hàng */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMobileMenuDrawerOpen(false);
+                  stopPosRingtone();
+                  playClickSound(true);
+                  const target = uncheckedOrders[0] || orders.find(o => o.status === 'pending') || orders[0];
+                  if (target) {
+                    setCheckOrderModal(target);
+                  } else {
+                    setShowCheckOrderDrawer(true);
+                  }
+                }}
+                className="p-3 rounded-2xl bg-amber-500 text-white font-bold text-xs flex items-center justify-between shadow-xs active:scale-95 transition-all text-left"
+              >
+                <div className="flex items-center gap-2">
+                  <Bell className="w-4 h-4 text-white" />
+                  <span>Check Đơn</span>
+                </div>
+                {uncheckedOrders.length > 0 && (
+                  <span className="w-5 h-5 rounded-full bg-red-600 text-white text-[10px] font-black flex items-center justify-center border border-white">
+                    {uncheckedOrders.length}
+                  </span>
+                )}
+              </button>
+
+              {/* Sản phẩm menu */}
+              {isTabAllowed('menu') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('menu');
+                    setIsMobileMenuDrawerOpen(false);
+                    playClickSound(true);
+                  }}
+                  className={`p-3 rounded-2xl border text-xs font-bold flex items-center gap-2 transition-all active:scale-95 text-left ${
+                    activeTab === 'menu' ? 'bg-[#322821] text-white border-[#322821]' : 'bg-white text-[#322821] border-[#DDD6C8]'
+                  }`}
+                >
+                  <PackageCheck className="w-4 h-4 text-blue-500" />
+                  <span>Quản Lý Món</span>
+                </button>
+              )}
+
+              {/* Nhân viên & phân quyền */}
+              {isTabAllowed('staff') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('staff');
+                    setIsMobileMenuDrawerOpen(false);
+                    playClickSound(true);
+                  }}
+                  className={`p-3 rounded-2xl border text-xs font-bold flex items-center gap-2 transition-all active:scale-95 text-left ${
+                    activeTab === 'staff' ? 'bg-[#322821] text-white border-[#322821]' : 'bg-white text-[#322821] border-[#DDD6C8]'
+                  }`}
+                >
+                  <Users className="w-4 h-4 text-purple-500" />
+                  <span>Nhân Sự Ca</span>
+                </button>
+              )}
+
+              {/* Khách hàng & tích điểm */}
+              {isTabAllowed('customers') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('customers');
+                    setIsMobileMenuDrawerOpen(false);
+                    playClickSound(true);
+                  }}
+                  className={`p-3 rounded-2xl border text-xs font-bold flex items-center gap-2 transition-all active:scale-95 text-left ${
+                    activeTab === 'customers' ? 'bg-[#322821] text-white border-[#322821]' : 'bg-white text-[#322821] border-[#DDD6C8]'
+                  }`}
+                >
+                  <UserCheck className="w-4 h-4 text-teal-600" />
+                  <span>Khách Hàng</span>
+                </button>
+              )}
+
+              {/* Voucher mã giảm giá */}
+              {isTabAllowed('coupons') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('coupons');
+                    setIsMobileMenuDrawerOpen(false);
+                    playClickSound(true);
+                  }}
+                  className={`p-3 rounded-2xl border text-xs font-bold flex items-center gap-2 transition-all active:scale-95 text-left ${
+                    activeTab === 'coupons' ? 'bg-[#322821] text-white border-[#322821]' : 'bg-white text-[#322821] border-[#DDD6C8]'
+                  }`}
+                >
+                  <Tag className="w-4 h-4 text-rose-500" />
+                  <span>Mã Giảm Giá</span>
+                </button>
+              )}
+
+              {/* Chấm công ca */}
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('attendance');
+                  setIsMobileMenuDrawerOpen(false);
+                  playClickSound(true);
+                }}
+                className={`p-3 rounded-2xl border text-xs font-bold flex items-center gap-2 transition-all active:scale-95 text-left ${
+                  activeTab === 'attendance' ? 'bg-[#322821] text-white border-[#322821]' : 'bg-white text-[#322821] border-[#DDD6C8]'
+                }`}
+              >
+                <Clock className="w-4 h-4 text-orange-500" />
+                <span>Chấm Công Ca</span>
+              </button>
+
+              {/* Mã QR 12 Bàn */}
+              {userRole === 'admin' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMobileMenuDrawerOpen(false);
+                    setIsQrModalOpen(true);
+                    playClickSound(true);
+                  }}
+                  className="p-3 rounded-2xl bg-white border border-[#DDD6C8] text-[#322821] text-xs font-bold flex items-center gap-2 active:scale-95 transition-all text-left"
+                >
+                  <QrCode className="w-4 h-4 text-amber-600" />
+                  <span>In Tem QR Bàn</span>
+                </button>
+              )}
+
+              {/* Xem trang khách */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMobileMenuDrawerOpen(false);
+                  onBackToStore();
+                }}
+                className="p-3 rounded-2xl bg-white border border-[#DDD6C8] text-[#322821] text-xs font-bold flex items-center gap-2 active:scale-95 transition-all text-left"
+              >
+                <ExternalLink className="w-4 h-4 text-emerald-600" />
+                <span>Trang Khách</span>
+              </button>
+
+              {/* Đổi ca nhân viên */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMobileMenuDrawerOpen(false);
+                  setIsStaffSwitcherOpen(true);
+                  playClickSound(true);
+                }}
+                className="p-3 rounded-2xl bg-white border border-[#DDD6C8] text-[#322821] text-xs font-bold flex items-center gap-2 active:scale-95 transition-all text-left"
+              >
+                <span>{currentStaff?.avatar || '👨‍💼'}</span>
+                <span>Đổi Ca Nhân Viên</span>
+              </button>
+
+              {/* Thử chuông POS */}
+              <button
+                type="button"
+                onClick={() => {
+                  handleTestSound();
+                }}
+                className="p-3 rounded-2xl bg-white border border-[#DDD6C8] text-[#322821] text-xs font-bold flex items-center gap-2 active:scale-95 transition-all text-left"
+              >
+                <Bell className="w-4 h-4 text-amber-500" />
+                <span>Thử Chuông POS</span>
+              </button>
+            </div>
+
+            {/* Nút Đăng Xuất */}
+            <button
+              type="button"
+              onClick={() => {
+                setIsMobileMenuDrawerOpen(false);
+                onLogout();
+              }}
+              className="w-full py-2.5 rounded-xl bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>Đăng Xuất Khỏi Quầy</span>
+            </button>
           </div>
         </div>
       )}
