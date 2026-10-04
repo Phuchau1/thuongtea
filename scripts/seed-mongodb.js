@@ -62,14 +62,20 @@ async function seed() {
       { upsert: true }
     );
 
-    // 2. Thành viên
-    console.log('👤 Đang đồng bộ danh sách thành viên tích điểm...');
+    // 2. Khách hàng & Thành viên (Users & Members)
+    console.log('👤 Đang đồng bộ danh sách khách hàng & thành viên tích điểm (users, members)...');
     for (const m of INITIAL_MEMBERS) {
       const cleanPhone = (m.phone || '').replace(/\D/g, '');
       if (cleanPhone) {
+        const userDoc = { ...m, id: cleanPhone, phone: cleanPhone, role: 'customer' };
         await db.collection('members').updateOne(
           { phone: cleanPhone },
-          { $set: { ...m, id: cleanPhone, phone: cleanPhone } },
+          { $set: userDoc },
+          { upsert: true }
+        );
+        await db.collection('users').updateOne(
+          { phone: cleanPhone },
+          { $set: userDoc },
           { upsert: true }
         );
       }

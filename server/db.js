@@ -37,16 +37,22 @@ export async function autoMigrateToMongo(db) {
       }
     }
 
-    // 2. Đồng bộ Thành Viên (Members)
+    // 2. Đồng bộ Khách hàng & Thành viên (Users & Members)
     const membersCount = await db.collection('members').countDocuments();
     if (membersCount === 0 && INITIAL_MEMBERS.length > 0) {
-      console.log(`[MongoDB Atlas] Migrating ${INITIAL_MEMBERS.length} initial members...`);
+      console.log(`[MongoDB Atlas] Migrating ${INITIAL_MEMBERS.length} initial customers/members...`);
       for (const mem of INITIAL_MEMBERS) {
         const cleanPhone = (mem.phone || '').replace(/\D/g, '');
         if (cleanPhone) {
+          const userDoc = { ...mem, id: cleanPhone, phone: cleanPhone, role: 'customer' };
           await db.collection('members').updateOne(
             { phone: cleanPhone },
-            { $set: { ...mem, id: cleanPhone, phone: cleanPhone } },
+            { $set: userDoc },
+            { upsert: true }
+          );
+          await db.collection('users').updateOne(
+            { phone: cleanPhone },
+            { $set: userDoc },
             { upsert: true }
           );
         }

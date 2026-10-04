@@ -389,9 +389,9 @@ app.post('/api/toppings', async (req, res) => {
 });
 
 // --------------------------------------------------------------------------
-// 6. MEMBERS & LOYALTY
+// 6. MEMBERS & USERS (KHÁCH HÀNG & THÀNH VIÊN TÍCH ĐIỂM)
 // --------------------------------------------------------------------------
-app.get('/api/members', async (req, res) => {
+app.get(['/api/members', '/api/users'], async (req, res) => {
   try {
     const { db } = getDatabase();
     if (!db) return res.json({ success: true, data: [] });
@@ -404,7 +404,7 @@ app.get('/api/members', async (req, res) => {
   }
 });
 
-app.post('/api/members', async (req, res) => {
+app.post(['/api/members', '/api/users'], async (req, res) => {
   try {
     const member = req.body;
     const cleanPhone = (member.phone || '').replace(/\D/g, '');
@@ -416,16 +416,25 @@ app.post('/api/members', async (req, res) => {
       ...member,
       id: cleanPhone,
       phone: cleanPhone,
+      role: 'customer',
       updatedAt: Date.now()
     };
 
     const { db } = getDatabase();
     if (db) {
-      await db.collection('members').updateOne(
-        { phone: cleanPhone },
-        { $set: standardized },
-        { upsert: true }
-      );
+      // Đồng bộ cả 2 collection members và users trên MongoDB Atlas
+      await Promise.all([
+        db.collection('members').updateOne(
+          { phone: cleanPhone },
+          { $set: standardized },
+          { upsert: true }
+        ),
+        db.collection('users').updateOne(
+          { phone: cleanPhone },
+          { $set: standardized },
+          { upsert: true }
+        )
+      ]);
     }
 
     res.json({ success: true, data: standardized });
@@ -434,16 +443,21 @@ app.post('/api/members', async (req, res) => {
   }
 });
 
-app.delete('/api/members/:id', async (req, res) => {
+app.delete(['/api/members/:id', '/api/users/:id'], async (req, res) => {
   try {
     const rawId = req.params.id;
     const cleanPhone = String(rawId).replace(/\D/g, '');
 
     const { db } = getDatabase();
     if (db) {
-      await db.collection('members').deleteMany({
-        $or: [{ phone: cleanPhone }, { id: rawId }, { phone: rawId }]
-      });
+      await Promise.all([
+        db.collection('members').deleteMany({
+          $or: [{ phone: cleanPhone }, { id: rawId }, { phone: rawId }]
+        }),
+        db.collection('users').deleteMany({
+          $or: [{ phone: cleanPhone }, { id: rawId }, { phone: rawId }]
+        })
+      ]);
     }
     res.json({ success: true, id: rawId });
   } catch (err) {
