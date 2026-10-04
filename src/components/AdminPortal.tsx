@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { useOrders } from '../context/OrderContext';
 import type { PosOrder } from '../types/pos';
-import { sortOrdersNewestFirst } from '../types/pos';
+import { sortOrdersNewestFirst, getOrderTimestamp } from '../types/pos';
 import type { CartItem, FruitTeaItem } from '../types/tea';
 import type { StaffMember, StaffRole } from '../types/staff';
 import type { MemberUser } from '../types/user';
@@ -791,50 +791,86 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   // ==========================================
   // DỮ LIỆU BÁO CÁO DOANH THU & TÀI CHÍNH
   // ==========================================
+  // Lọc đơn hàng theo mốc thời gian thực tế
+  const filteredRevenueOrders = useMemo(() => {
+    if (revenueTimeFilter === 'all') return sortedOrders;
+
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const sevenDaysAgo = startOfToday - 6 * 24 * 3600 * 1000; // 7 ngày bao gồm hôm nay
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+
+    return sortedOrders.filter((o) => {
+      const ts = getOrderTimestamp(o);
+      if (ts <= 0) return true;
+
+      if (revenueTimeFilter === 'today') {
+        return ts >= startOfToday;
+      }
+      if (revenueTimeFilter === 'week') {
+        return ts >= sevenDaysAgo;
+      }
+      if (revenueTimeFilter === 'month') {
+        return ts >= startOfMonth;
+      }
+      return true;
+    });
+  }, [sortedOrders, revenueTimeFilter]);
+
   const revenueStats = useMemo(() => {
-    const paidOrders = orders.filter((o) => o.paymentStatus === 'paid');
+    const paidOrders = filteredRevenueOrders.filter(
+      (o) => o.paymentStatus === 'paid' && o.status !== 'cancelled'
+    );
     const totalRevenue = paidOrders.reduce((sum, o) => sum + o.total, 0);
     const totalOrdersCount = paidOrders.length;
     const aov = totalOrdersCount > 0 ? Math.round(totalRevenue / totalOrdersCount) : 0;
     
-    // Chưa thanh toán
-    const unpaidOrders = orders.filter((o) => o.paymentStatus === 'unpaid');
+    // Chưa thanh toán trong kỳ
+    const unpaidOrders = filteredRevenueOrders.filter(
+      (o) => o.paymentStatus === 'unpaid' && o.status !== 'cancelled'
+    );
     const unpaidRevenue = unpaidOrders.reduce((sum, o) => sum + o.total, 0);
 
-    // Tiền mặt vs VietQR
-    const cashTotal = paidOrders
-      .filter((o) => o.customer.paymentMethod === 'cod')
-      .reduce((sum, o) => sum + o.total, 0);
-    const qrTotal = paidOrders
-      .filter((o) => o.customer.paymentMethod === 'vietqr' || o.customer.paymentMethod === 'momo')
-      .reduce((sum, o) => sum + o.total, 0);
+    // Tiền mặt vs Chuyển khoản QR
+    const cashOrders = paidOrders.filter(
+      (o) => o.customer?.paymentMethod === 'cod' || (!o.customer?.paymentMethod && o.staffNote?.toLowerCase().includes('tiền mặt'))
+    );
+    const cashTotal = cashOrders.reduce((sum, o) => sum + o.total, 0);
 
-    // Tại bàn vs Giao đi
-    const dineInTotal = paidOrders
-      .filter((o) => o.orderType === 'dine-in')
-      .reduce((sum, o) => sum + o.total, 0);
-    const deliveryTotal = paidOrders
-      .filter((o) => o.orderType === 'delivery' || o.orderType === 'takeaway')
-      .reduce((sum, o) => sum + o.total, 0);
+    const qrOrders = paidOrders.filter(
+      (o) => o.customer?.paymentMethod === 'vietqr' || o.customer?.paymentMethod === 'momo' || (o.customer?.paymentMethod && o.customer?.paymentMethod !== 'cod')
+    );
+    const qrTotal = qrOrders.reduce((sum, o) => sum + o.total, 0);
+
+    // Tại bàn vs Giao đi / Mang về
+    const dineInOrders = paidOrders.filter((o) => o.orderType === 'dine-in');
+    const dineInTotal = dineInOrders.reduce((sum, o) => sum + o.total, 0);
+    const dineInCount = dineInOrders.length;
+
+    const deliveryOrders = paidOrders.filter((o) => o.orderType === 'delivery' || o.orderType === 'takeaway');
+    const deliveryTotal = deliveryOrders.reduce((sum, o) => sum + o.total, 0);
+    const deliveryCount = deliveryOrders.length;
 
     // Top món bán chạy
     const itemMap: { [name: string]: { name: string; qty: number; revenue: number; image: string } } = {};
     paidOrders.forEach((o) => {
-      o.items.forEach((it) => {
-        if (!itemMap[it.tea.name]) {
-          itemMap[it.tea.name] = {
-            name: it.tea.name,
+      (o.items || []).forEach((it) => {
+        if (!it.tea) return;
+        const name = it.tea.name;
+        if (!itemMap[name]) {
+          itemMap[name] = {
+            name,
             qty: 0,
             revenue: 0,
-            image: it.tea.image,
+            image: it.tea.image || '',
           };
         }
-        itemMap[it.tea.name].qty += it.quantity;
-        itemMap[it.tea.name].revenue += it.totalPrice;
+        itemMap[name].qty += (it.quantity || 1);
+        itemMap[name].revenue += (it.totalPrice || (it.unitPrice * (it.quantity || 1)));
       });
     });
 
-    const topItems = Object.values(itemMap).sort((a, b) => b.qty - a.qty);
+    const topItems = Object.values(itemMap).sort((a, b) => b.qty !== a.qty ? b.qty - a.qty : b.revenue - a.revenue);
 
     return {
       totalRevenue,
@@ -843,12 +879,16 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       unpaidRevenue,
       unpaidCount: unpaidOrders.length,
       cashTotal,
+      cashCount: cashOrders.length,
       qrTotal,
+      qrCount: qrOrders.length,
       dineInTotal,
+      dineInCount,
       deliveryTotal,
+      deliveryCount,
       topItems,
     };
-  }, [orders]);
+  }, [filteredRevenueOrders]);
 
   const formatVND = (price: number) => {
     return new Intl.NumberFormat('vi-VN').format(price) + ' đ';
@@ -857,7 +897,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   return (
     <div className="min-h-screen bg-[#FAF7F2] text-[#222B25] flex flex-col font-sans">
       {/* HEADER QUẢN TRỊ TRUNG TÂM */}
-      <header className="sticky top-0 z-40 bg-[#322821] text-white shadow-md">
+      <header className="sticky top-0 z-40 bg-[#322821] text-white shadow-md print:hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
           
           {/* Logo & Tên Hệ Thống */}
@@ -1055,7 +1095,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       )}
 
       {/* THANH ĐIỀU HƯỚNG CÁC TAB CHỨC NĂNG */}
-      <div className="bg-white border-b border-[#EAE3D2] px-4 sm:px-6 py-2.5 flex items-center justify-between gap-4 overflow-x-auto scrollbar-none">
+      <div className="bg-white border-b border-[#EAE3D2] px-4 sm:px-6 py-2.5 flex items-center justify-between gap-4 overflow-x-auto scrollbar-none print:hidden">
         <div className="flex items-center gap-1.5 sm:gap-2">
           
           {/* TAB 1: THU NGÂN POS */}
@@ -2822,8 +2862,16 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         {/* ======================================================== */}
         {activeTab === 'revenue' && (
           <div>
-            {/* Header Báo Cáo */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+            {/* Header Báo Cáo In ấn */}
+            <div className="hidden print:block mb-6 text-center border-b pb-4">
+              <h2 className="text-xl font-bold uppercase tracking-wider text-black">THƯỢNG TEA - BÁO CÁO DOANH THU & HIỆU QUẢ BÁN HÀNG</h2>
+              <p className="text-xs text-gray-500 mt-1">
+                Kỳ báo cáo: {revenueTimeFilter === 'today' ? 'Hôm nay' : revenueTimeFilter === 'week' ? '7 ngày qua' : revenueTimeFilter === 'month' ? 'Tháng này' : 'Toàn bộ thời gian'} • Ngày xuất: {new Date().toLocaleDateString('vi-VN')} {new Date().toLocaleTimeString('vi-VN')}
+              </p>
+            </div>
+
+            {/* Header Báo Cáo trên màn hình */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 print:hidden">
               <div>
                 <h3 className="font-display font-bold text-2xl text-[#322821]">
                   Báo Cáo Doanh Thu & Hiệu Quả Bán Hàng
@@ -2899,11 +2947,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 <div className="text-xs space-y-1 font-mono font-bold mt-2">
                   <div className="flex justify-between text-emerald-800">
                     <span>💵 Tiền mặt:</span>
-                    <span>{formatVND(revenueStats.cashTotal)}</span>
+                    <span>{formatVND(revenueStats.cashTotal)} ({revenueStats.cashCount} đơn)</span>
                   </div>
                   <div className="flex justify-between text-blue-800">
                     <span>📱 VietQR:</span>
-                    <span>{formatVND(revenueStats.qrTotal)}</span>
+                    <span>{formatVND(revenueStats.qrTotal)} ({revenueStats.qrCount} đơn)</span>
                   </div>
                 </div>
               </div>
@@ -2936,36 +2984,42 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 </div>
 
                 <div className="space-y-3">
-                  {revenueStats.topItems.slice(0, 6).map((item, idx) => {
-                    const maxQty = revenueStats.topItems[0]?.qty || 1;
-                    const percent = Math.round((item.qty / maxQty) * 100);
+                  {revenueStats.topItems.length === 0 ? (
+                    <div className="py-8 text-center text-xs text-[#8C9890] bg-[#FAF7F2] rounded-2xl border border-dashed border-[#DDD6C8]">
+                      Chưa có dữ liệu bán trong khoảng thời gian này.
+                    </div>
+                  ) : (
+                    revenueStats.topItems.slice(0, 6).map((item, idx) => {
+                      const maxQty = revenueStats.topItems[0]?.qty || 1;
+                      const percent = Math.round((item.qty / maxQty) * 100);
 
-                    return (
-                      <div key={item.name} className="space-y-1">
-                        <div className="flex items-center justify-between text-xs">
-                          <div className="flex items-center gap-2">
-                            <span className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] ${
-                              idx === 0 ? 'bg-yellow-400 text-yellow-950' : idx === 1 ? 'bg-slate-300 text-slate-800' : 'bg-[#FAF7F2] text-[#69776E]'
-                            }`}>
-                              {idx + 1}
-                            </span>
-                            <span className="font-bold text-[#322821]">{item.name}</span>
+                      return (
+                        <div key={item.name} className="space-y-1">
+                          <div className="flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-2">
+                              <span className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] ${
+                                idx === 0 ? 'bg-yellow-400 text-yellow-950' : idx === 1 ? 'bg-slate-300 text-slate-800' : 'bg-[#FAF7F2] text-[#69776E]'
+                              }`}>
+                                {idx + 1}
+                              </span>
+                              <span className="font-bold text-[#322821]">{item.name}</span>
+                            </div>
+                            <div className="font-sans font-bold text-[#D95829]">
+                              {item.qty} ly • {formatVND(item.revenue)}
+                            </div>
                           </div>
-                          <div className="font-sans font-bold text-[#D95829]">
-                            {item.qty} ly • {formatVND(item.revenue)}
+
+                          {/* Thanh tỷ trọng */}
+                          <div className="w-full bg-[#FAF7F2] h-2 rounded-full overflow-hidden border border-[#EAE3D2]">
+                            <div
+                              className="bg-[#322821] h-full rounded-full transition-all duration-500"
+                              style={{ width: `${percent}%` }}
+                            />
                           </div>
                         </div>
-
-                        {/* Thanh tỷ trọng */}
-                        <div className="w-full bg-[#FAF7F2] h-2 rounded-full overflow-hidden border border-[#EAE3D2]">
-                          <div
-                            className="bg-[#322821] h-full rounded-full transition-all duration-500"
-                            style={{ width: `${percent}%` }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })
+                  )}
                 </div>
               </div>
 
@@ -2982,7 +3036,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                         <span className="text-base">🪑</span>
                         <div>
                           <div className="font-bold text-[#322821]">Ngồi Tại Bàn (Dine-in)</div>
-                          <div className="text-[10px] text-[#7A8780]">Khách uống tại 12 bàn</div>
+                          <div className="text-[10px] text-[#7A8780]">{revenueStats.dineInCount} đơn tại bàn</div>
                         </div>
                       </div>
                       <strong className="font-sans text-sm text-[#322821]">
@@ -2995,7 +3049,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                         <span className="text-base">🛵</span>
                         <div>
                           <div className="font-bold text-[#322821]">Giao Đi & Mang Về (Takeaway)</div>
-                          <div className="text-[10px] text-[#7A8780]">Khách mang đi hoặc ship</div>
+                          <div className="text-[10px] text-[#7A8780]">{revenueStats.deliveryCount} đơn mang về / ship</div>
                         </div>
                       </div>
                       <strong className="font-sans text-sm text-[#322821]">
@@ -3014,7 +3068,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             {/* BẢNG LỊCH SỬ GIAO DỊCH HOÁ ĐƠN CHI TIẾT */}
             <div className="bg-white rounded-3xl border border-[#DDD5C5] overflow-hidden shadow-xs">
               <div className="p-4 bg-[#FAF7F2] border-b border-[#DDD5C5] font-bold text-xs uppercase tracking-wider text-[#6A7870] flex items-center justify-between">
-                <span>Nhật Ký Hóa Đơn & Giao Dịch Gần Đây ({orders.length} đơn)</span>
+                <span>
+                  Nhật Ký Hóa Đơn & Giao Dịch (
+                  {revenueTimeFilter === 'today' ? 'Hôm nay' : revenueTimeFilter === 'week' ? '7 ngày qua' : revenueTimeFilter === 'month' ? 'Tháng này' : 'Tất cả'}: {filteredRevenueOrders.length} đơn)
+                </span>
                 <span className="text-[11px] font-normal normal-case text-[#7A8780]">Cập nhật realtime</span>
               </div>
 
@@ -3028,40 +3085,48 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                       <th className="p-3 font-semibold">Món Đã Gọi</th>
                       <th className="p-3 font-semibold">Thanh Toán</th>
                       <th className="p-3 font-semibold">Tổng Tiền</th>
-                      <th className="p-3 font-semibold text-right">In Bill</th>
+                      <th className="p-3 font-semibold text-right print:hidden">In Bill</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#F0EAE0]">
-                    {sortedOrders.slice(0, 15).map((o) => (
-                      <tr key={o.id} className="hover:bg-[#FDFBF7]">
-                        <td className="p-3 font-mono font-bold text-[#322821]">#{o.orderNumber}</td>
-                        <td className="p-3 text-[#6A7870] font-mono">{o.createdAt}</td>
-                        <td className="p-3">
-                          <div className="font-bold text-[#322821]">{o.customer.name}</div>
-                          <div className="text-[11px] text-[#7A8780]">{o.tableNumber || (o.orderType === 'delivery' ? 'Giao tận nơi' : 'Mang về')}</div>
-                        </td>
-                        <td className="p-3 max-w-xs truncate text-[#44524A]">
-                          {o.items.map(it => `${it.quantity}x ${it.tea.name}`).join(', ')}
-                        </td>
-                        <td className="p-3">
-                          <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
-                            o.paymentStatus === 'paid' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-                          }`}>
-                            {o.paymentStatus === 'paid' ? 'Đã thu tiền' : 'Chưa thanh toán'}
-                          </span>
-                        </td>
-                        <td className="p-3 font-sans font-bold text-[#D95829]">{formatVND(o.total)}</td>
-                        <td className="p-3 text-right">
-                          <button
-                            onClick={() => setPrintingOrder(o)}
-                            className="p-1.5 rounded-xl bg-[#FAF7F2] hover:bg-[#EAE3D2] text-[#322821] border border-[#DDD6C8]"
-                            title="In lại hóa đơn K80"
-                          >
-                            <Printer className="w-3.5 h-3.5" />
-                          </button>
+                    {filteredRevenueOrders.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="p-8 text-center text-xs text-[#8C9890]">
+                          Chưa có hóa đơn nào phát sinh trong khoảng thời gian này.
                         </td>
                       </tr>
-                    ))}
+                    ) : (
+                      filteredRevenueOrders.map((o) => (
+                        <tr key={o.id} className="hover:bg-[#FDFBF7]">
+                          <td className="p-3 font-mono font-bold text-[#322821]">#{o.orderNumber}</td>
+                          <td className="p-3 text-[#6A7870] font-mono">{o.createdAt}</td>
+                          <td className="p-3">
+                            <div className="font-bold text-[#322821]">{o.customer.name}</div>
+                            <div className="text-[11px] text-[#7A8780]">{o.tableNumber || (o.orderType === 'delivery' ? 'Giao tận nơi' : 'Mang về')}</div>
+                          </td>
+                          <td className="p-3 max-w-xs truncate text-[#44524A]">
+                            {o.items.map(it => `${it.quantity}x ${it.tea.name}`).join(', ')}
+                          </td>
+                          <td className="p-3">
+                            <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
+                              o.paymentStatus === 'paid' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                            }`}>
+                              {o.paymentStatus === 'paid' ? 'Đã thu tiền' : 'Chưa thanh toán'}
+                            </span>
+                          </td>
+                          <td className="p-3 font-sans font-bold text-[#D95829]">{formatVND(o.total)}</td>
+                          <td className="p-3 text-right print:hidden">
+                            <button
+                              onClick={() => setPrintingOrder(o)}
+                              className="p-1.5 rounded-xl bg-[#FAF7F2] hover:bg-[#EAE3D2] text-[#322821] border border-[#DDD6C8]"
+                              title="In lại hóa đơn K80"
+                            >
+                              <Printer className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
